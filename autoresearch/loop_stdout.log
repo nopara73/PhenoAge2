@@ -234,3 +234,54 @@ discard | val=0.775620 | mem_gb=0.021 | commit=ff859d7 | LEARNING_RATE 0.00195 -
 discard | val=0.774463 | mem_gb=0.021 | commit=ff859d7 | FeatureEncoder +5 biomarker transforms (amp*log_crp, sgp*rdw, alk*log_crp, sgp/albumin, log1p(alk)); val_cindex 0.774463 best_step 200
 discard | val=0.775023 | mem_gb=0.021 | commit=ff859d7 | LEARNING_RATE 0.00195 -> 0.0021; val_cindex 0.775023 best_step 550
 discard | val=0.774955 | mem_gb=0.021 | commit=ff859d7 | LEARNING_RATE 0.00195 -> 0.00185; val_cindex 0.774955 best_step 650
+Logged crash result: commit=ff859d7 val_cindex=0.000000 memory_gb=0.000
+Restored train.py from C:\Users\user\Desktop\PhenoAge2\autoresearch\last_kept_train.py
+Total runs:        32
+Keep/discard/crash:12/17/3
+
+Best overall:
+   keep | val=0.775929 | mem_gb=0.021 | commit=ff859d7 | WEIGHT_DECAY 0.00025 -> 0.00026; val_cindex 0.775929 best_step 650
+
+Best kept:
+   keep | val=0.775929 | mem_gb=0.021 | commit=ff859d7 | WEIGHT_DECAY 0.00025 -> 0.00026; val_cindex 0.775929 best_step 650
+
+Recent runs:
+discard | val=0.774463 | mem_gb=0.021 | commit=ff859d7 | FeatureEncoder +5 biomarker transforms (amp*log_crp, sgp*rdw, alk*log_crp, sgp/albumin, log1p(alk)); val_cindex 0.774463 best_step 200
+discard | val=0.775023 | mem_gb=0.021 | commit=ff859d7 | LEARNING_RATE 0.00195 -> 0.0021; val_cindex 0.775023 best_step 550
+discard | val=0.774955 | mem_gb=0.021 | commit=ff859d7 | LEARNING_RATE 0.00195 -> 0.00185; val_cindex 0.774955 best_step 650
+discard | val=0.774955 | mem_gb=0.021 | commit=ff859d7 | Add direct linear correction path on standardized encoded features; val_cindex 0.774955 best_step 650
+  crash | val=0.000000 | mem_gb=0.000 | commit=ff859d7 | crash: LEARNING_RATE 0.00195 -> 0.00215
+Logged discard result: commit=ff859d7 val_cindex=0.775926 memory_gb=0.021
+Restored train.py from C:\Users\user\Desktop\PhenoAge2\autoresearch\last_kept_train.py
+Total runs:        33
+Keep/discard/crash:12/18/3
+
+Best overall:
+   keep | val=0.775929 | mem_gb=0.021 | commit=ff859d7 | WEIGHT_DECAY 0.00025 -> 0.00026; val_cindex 0.775929 best_step 650
+
+Best kept:
+   keep | val=0.775929 | mem_gb=0.021 | commit=ff859d7 | WEIGHT_DECAY 0.00025 -> 0.00026; val_cindex 0.775929 best_step 650
+
+Recent runs:
+discard | val=0.775023 | mem_gb=0.021 | commit=ff859d7 | LEARNING_RATE 0.00195 -> 0.0021; val_cindex 0.775023 best_step 550
+discard | val=0.774955 | mem_gb=0.021 | commit=ff859d7 | LEARNING_RATE 0.00195 -> 0.00185; val_cindex 0.774955 best_step 650
+discard | val=0.774955 | mem_gb=0.021 | commit=ff859d7 | Add direct linear correction path on standardized encoded features; val_cindex 0.774955 best_step 650
+  crash | val=0.000000 | mem_gb=0.000 | commit=ff859d7 | crash: LEARNING_RATE 0.00195 -> 0.00215
+discard | val=0.775926 | mem_gb=0.021 | commit=ff859d7 | WEIGHT_DECAY 0.00026 -> 0.0002496; val_cindex 0.775926 best_step 650
+Logged discard result: commit=ff859d7 val_cindex=0.775929 memory_gb=0.021
+Restored train.py from C:\Users\user\Desktop\PhenoAge2\autoresearch\last_kept_train.py
+Total runs:        35
+Keep/discard/crash:12/20/3
+
+Best overall:
+   keep | val=0.775929 | mem_gb=0.021 | commit=ff859d7 | WEIGHT_DECAY 0.00025 -> 0.00026; val_cindex 0.775929 best_step 650
+
+Best kept:
+   keep | val=0.775929 | mem_gb=0.021 | commit=ff859d7 | WEIGHT_DECAY 0.00025 -> 0.00026; val_cindex 0.775929 best_step 650
+
+Recent runs:
+discard | val=0.774955 | mem_gb=0.021 | commit=ff859d7 | Add direct linear correction path on standardized encoded features; val_cindex 0.774955 best_step 650
+  crash | val=0.000000 | mem_gb=0.000 | commit=ff859d7 | crash: LEARNING_RATE 0.00195 -> 0.00215
+discard | val=0.775926 | mem_gb=0.021 | commit=ff859d7 | WEIGHT_DECAY 0.00026 -> 0.0002496; val_cindex 0.775926 best_step 650
+discard | val=0.774050 | mem_gb=0.018 | commit=ff859d7 | Mini-batch Cox (batch=1024) with cosine LR decay; val_cindex 0.774050 best_step 650
+discard | val=0.775929 | mem_gb=0.021 | commit=ff859d7 | WEIGHT_DECAY 0.00026 -> 0.0002704; val_cindex 0.775929 best_step 650
