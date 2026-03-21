@@ -77,3 +77,24 @@ The comparison between original `PhenoAge` and `PhenoAge 2.0` is paired on the s
 If superiority is not achieved, `PhenoAge 2.0` is still considered a secondary success if its held-out test-set `C-index` is no more than `0.01` below the held-out test-set `C-index` of original `PhenoAge`, despite excluding chronological age from its inputs.
 
 This rule is frozen before the final `PhenoAge 2.0` result is evaluated so that the benchmark cannot be redefined after seeing the outcome.
+
+## Frozen Definition Of A Valid PhenoAge 2.0 Model
+
+For the main benchmark, a candidate model counts as a valid `PhenoAge 2.0` model only if all of the following conditions are satisfied.
+
+- Allowed input features are limited to the 9 original PhenoAge biomarkers: `AMP`, `CEP`, `SGP`, `CRP`, `LMPPCNT`, `MVPSI`, `RWP`, `APPSI`, and `WCP`
+- Chronological age (`HSAGEIR`) is not allowed as an input feature
+- No extra covariates are allowed beyond the 9 biomarkers
+- No external datasets, pretrained models, or external labels may be used for training, tuning, or feature construction
+- The training participant set must come only from rows marked `development` in `nhanes3-phenoage/frozen_split.csv`
+- Any preprocessing, feature transformation, scaling, imputation, normalization, selection, or derived-feature construction must be fit only on the training portion of each development-fold split
+
+The following are not allowed for the main benchmark:
+
+- direct use of `HSAGEIR`
+- engineered features that directly encode chronological age
+- use of mortality follow-up fields as model inputs
+- use of `mortstat`, `time_months`, `permth_exm`, `ucod_leading`, or `aging_related_event` as model inputs
+- leakage from held-out `test` participants into training, preprocessing, model selection, or feature engineering
+
+In short, a valid `PhenoAge 2.0` model must learn only from the same 9 biomarkers used by original `PhenoAge`, while excluding chronological age and any other auxiliary information.
