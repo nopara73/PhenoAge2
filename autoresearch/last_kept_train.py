@@ -43,11 +43,14 @@ from prepare import (
 # ---------------------------------------------------------------------------
 
 HIDDEN_SIZES = (32, 16)
-DROPOUT = 0.02
-LEARNING_RATE = 0.003
+DROPOUT = 0.05
+LEARNING_RATE = 0.002
 WEIGHT_DECAY = 1e-4
-EVAL_EVERY = 500
+EVAL_EVERY = 75
 SEED = 42
+EARLY_STOP_MIN_DELTA = 1e-4
+EARLY_STOP_PATIENCE_EVALS = 3
+EARLY_STOP_MIN_TRAIN_SECONDS = 20.0
 
 
 class FeatureEncoder(nn.Module):
@@ -207,6 +210,9 @@ def main() -> None:
     best_step = -1
     step = 0
     train_seconds = 0.0
+    eval_count = 0
+    evals_since_improvement = 0
+    stop_reason = "time_budget"
 
     while True:
         if device.type == "cuda":
@@ -229,11 +235,15 @@ def main() -> None:
             raise RuntimeError("Training diverged.")
 
         if step % EVAL_EVERY == 0:
+            eval_count += 1
             val_cindex = evaluate_cindex(model, val_rows, device)
-            if val_cindex > best_val_cindex:
+            if val_cindex > best_val_cindex + EARLY_STOP_MIN_DELTA:
                 best_val_cindex = val_cindex
                 best_step = step
                 best_state = {key: value.detach().cpu().clone() for key, value in model.state_dict().items()}
+                evals_since_improvement = 0
+            else:
+                evals_since_improvement += 1
 
             remaining = max(0.0, TIME_BUDGET - train_seconds)
             print(
@@ -241,6 +251,14 @@ def main() -> None:
                 f"val_cindex: {val_cindex:.6f} | best: {best_val_cindex:.6f} | "
                 f"remaining: {remaining:.1f}s"
             )
+
+            if (
+                train_seconds >= EARLY_STOP_MIN_TRAIN_SECONDS
+                and eval_count >= EARLY_STOP_PATIENCE_EVALS + 1
+                and evals_since_improvement >= EARLY_STOP_PATIENCE_EVALS
+            ):
+                stop_reason = "early_stop"
+                break
 
         step += 1
         if train_seconds >= TIME_BUDGET:
@@ -274,6 +292,7 @@ def main() -> None:
     print(f"num_steps:        {step}")
     print(f"num_params:       {num_params}")
     print(f"best_step:        {best_step}")
+    print(f"stop_reason:      {stop_reason}")
     print(f"artifact_path:    {DEFAULT_CANDIDATE_MODEL_PATH}")
 
 

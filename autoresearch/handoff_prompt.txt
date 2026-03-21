@@ -26,11 +26,16 @@ Autonomy rules:
 - Do not stop after one or two experiments just to summarize.
 - After each completed run, immediately choose the next single-knob experiment and continue.
 - Keep iterating until one of these happens:
-  1. 20 completed experiments, or
-  2. 8 hours have elapsed, or
-  3. 5 consecutive discarded runs show no meaningful improvement and you can clearly explain why the search is stuck, or
+  1. 10 hours have elapsed, or
+  2. 10000 completed experiments, or
+  3. 30 consecutive discarded runs show no meaningful improvement and you can clearly explain why the search is stuck, or
   4. the user interrupts you.
 - Only give a final stop-and-report summary when one of those stopping conditions is met.
+
+Recovery rules:
+- Before starting a new experiment, check whether `run.log` already contains a completed summary block from a finished run.
+- If a run finished but `results.tsv`, `research_journal.md`, or `last_kept_train.py` were not updated yet, reconcile that finished run first before making any new changes.
+- Never throw away a finished run just because the agent was interrupted after training and before logging.
 
 Keep/discard workflow:
 1. If this is the first run, save the current baseline with `python manage_kept.py save`.
@@ -54,7 +59,7 @@ Search style:
 - Favor small, disciplined iterations over big rewrites.
 - Prefer simpler models when performance is similar.
 - Periodically summarize what is working and what is not working.
-- Stop and report if the loop starts repeating itself or if there is no credible improvement path.
+- If the loop starts repeating itself, widen the search locally and keep going until a stopping condition is actually met.
 
 When updating the user:
 - Report the current best kept `val_cindex`.

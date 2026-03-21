@@ -112,11 +112,19 @@ Do not stop the search after one or two completed experiments just to summarize.
 
 - After each completed run, immediately choose the next single-knob experiment and continue.
 - Keep iterating until one of these happens:
-  - 20 completed experiments
-  - 8 hours elapsed
-  - 5 consecutive discarded runs without meaningful improvement and a clear explanation for why the search appears stuck
+  - 10 hours elapsed
+  - 1000 completed experiments
+  - 10 consecutive discarded runs without meaningful improvement and a clear explanation for why the search appears stuck
   - explicit user interruption
 - Only stop-and-report when one of those conditions is met.
+
+## Recovery Policy
+
+If the agent is interrupted, reconcile the current state before starting a new experiment.
+
+- If `run.log` already contains a completed summary block, decide whether that finished run should be recorded as `keep`, `discard`, or `crash`.
+- Update `results.tsv`, `research_journal.md`, and `last_kept_train.py` consistently with that finished run before continuing.
+- Do not discard a completed run just because the interruption happened after training and before logging.
 
 ## Experiment Loop
 

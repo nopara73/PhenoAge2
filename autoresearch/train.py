@@ -43,10 +43,10 @@ from prepare import (
 # ---------------------------------------------------------------------------
 
 HIDDEN_SIZES = (32, 16)
-DROPOUT = 0.02
-LEARNING_RATE = 0.003
+DROPOUT = 0.05
+LEARNING_RATE = 0.002
 WEIGHT_DECAY = 1e-4
-EVAL_EVERY = 500
+EVAL_EVERY = 75
 SEED = 42
 EARLY_STOP_MIN_DELTA = 1e-4
 EARLY_STOP_PATIENCE_EVALS = 3
