@@ -48,3 +48,15 @@ A participant-level final test set is frozen before model search begins.
 The `test` participants in `nhanes3-phenoage/frozen_split.csv` are the untouched final benchmark set. They may be used only for the one-time final comparison between original `PhenoAge` and the final selected `PhenoAge 2.0` model.
 
 All model search, candidate comparison, feature engineering, preprocessing fitting, and hyperparameter tuning must be performed only on participants marked `development`. If the frozen test set is used to guide further model changes, it is no longer a valid untouched test set for the main benchmark.
+
+## Frozen Primary Metric
+
+The primary evaluation metric for headline original `PhenoAge` vs `PhenoAge 2.0` comparisons is the concordance index (`C-index`) on the untouched final test set.
+
+- Primary metric: `C-index`
+- Evaluation set: participants marked `test` in `nhanes3-phenoage/frozen_split.csv`
+- Comparison rule: both models are scored on the same held-out participants
+
+This metric is used only for model comparison, not to redefine the underlying prediction task. The prediction task remains time to aging-related death on the frozen cohort.
+
+The original `PhenoAge` formulation remains Gompertz-based, but the benchmark comparison between original `PhenoAge` and `PhenoAge 2.0` is frozen to `C-index` so both methods can be judged with the same survival-aware discrimination metric.
