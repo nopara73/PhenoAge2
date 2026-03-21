@@ -98,3 +98,23 @@ The following are not allowed for the main benchmark:
 - leakage from held-out `test` participants into training, preprocessing, model selection, or feature engineering
 
 In short, a valid `PhenoAge 2.0` model must learn only from the same 9 biomarkers used by original `PhenoAge`, while excluding chronological age and any other auxiliary information.
+
+## Frozen Reporting Template
+
+Any headline benchmark comparison between original `PhenoAge` and `PhenoAge 2.0` must report the following items together.
+
+- benchmark dataset identity: `nhanes3-phenoage`
+- cohort size and aging-related death count
+- evaluation split identity: held-out `test` participants from `nhanes3-phenoage/frozen_split.csv`
+- primary metric: held-out `C-index`
+- original `PhenoAge` held-out `C-index`
+- `PhenoAge 2.0` held-out `C-index`
+- primary difference definition: `Delta = C-index(PhenoAge 2.0) - C-index(PhenoAge)`
+- superiority threshold: `Delta >= +0.01`
+- non-inferiority margin: `Delta > -0.01`
+- final interpretation category: superior, non-inferior, or inferior
+- whether chronological age was excluded from `PhenoAge 2.0` inputs
+
+If reported, secondary analyses, exploratory findings, subgroup results, or alternative metrics must be clearly labeled as secondary and must not replace the frozen primary comparison.
+
+The headline claim for the project must be based on this frozen reporting template rather than on selective reporting of auxiliary results.
