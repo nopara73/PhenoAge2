@@ -1,9 +1,9 @@
-- Albumin
-- Creatinine
-- Glucose
-- C-reactive protein
-- Lymphocyte percent
-- Mean red cell volume
-- Red cell distribution width
-- Alkaline phosphatase
-- White blood cell count
+- Albumin: cohort `AMP` is in g/dL; original PhenoAge formula uses g/L
+- Creatinine: cohort `CEP` is in mg/dL; original PhenoAge formula uses umol/L
+- Glucose: cohort `SGP` is in mg/dL; original PhenoAge formula uses mmol/L
+- C-reactive protein: cohort `CRP` is in mg/dL; original PhenoAge formula uses mg/L before `ln(CRP)`
+- Lymphocyte percent: cohort `LMPPCNT` is in percent; original PhenoAge formula uses percent
+- Mean red cell volume: cohort `MVPSI` is in fL; original PhenoAge formula uses fL
+- Red cell distribution width: cohort `RWP` is in percent; original PhenoAge formula uses percent
+- Alkaline phosphatase: cohort `APPSI` is in U/L; original PhenoAge formula uses U/L
+- White blood cell count: cohort `WCP` appears to be in `10^3 cells/uL`; original PhenoAge formula uses `10^3 cells/uL`
