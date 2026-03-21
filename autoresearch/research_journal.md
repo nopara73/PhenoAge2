@@ -297,3 +297,19 @@ Rules:
 - Decision: **discard** (restored)
 - Learning: No improvement vs best kept.
 - Next: Try next queued neighbor.
+
+## Run 36
+- Hypothesis: Single local move unlikely to beat current best.
+- Change: WEIGHT_DECAY 0.00026 -> 0.0002392
+- Result: val_cindex **0.775926** (best kept **0.775929**)
+- Decision: **discard** (restored)
+- Learning: No improvement vs best kept.
+- Next: Try next queued neighbor.
+
+## Run 37
+- Hypothesis: Single local move unlikely to beat current best.
+- Change: WEIGHT_DECAY 0.00026 -> 0.0002808
+- Result: val_cindex **0.775929** (best kept **0.775929**)
+- Decision: **discard** (restored)
+- Learning: No improvement vs best kept.
+- Next: Try next queued neighbor.

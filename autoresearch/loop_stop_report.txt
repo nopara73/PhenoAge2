@@ -1,0 +1,5 @@
+Loop stopped by user request.
+All live `run_until_stop.py` and `train.py` autoresearch processes were terminated manually.
+No completed summary block was present in `run.log`, so there was no finished run to reconcile.
+`train.py` was restored from `last_kept_train.py`.
+Best kept `val_cindex` remains 0.775929.

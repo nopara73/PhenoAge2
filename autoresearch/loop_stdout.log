@@ -285,3 +285,37 @@ discard | val=0.774955 | mem_gb=0.021 | commit=ff859d7 | Add direct linear corre
 discard | val=0.775926 | mem_gb=0.021 | commit=ff859d7 | WEIGHT_DECAY 0.00026 -> 0.0002496; val_cindex 0.775926 best_step 650
 discard | val=0.774050 | mem_gb=0.018 | commit=ff859d7 | Mini-batch Cox (batch=1024) with cosine LR decay; val_cindex 0.774050 best_step 650
 discard | val=0.775929 | mem_gb=0.021 | commit=ff859d7 | WEIGHT_DECAY 0.00026 -> 0.0002704; val_cindex 0.775929 best_step 650
+Logged discard result: commit=e26640d val_cindex=0.775926 memory_gb=0.021
+Restored train.py from C:\Users\user\Desktop\PhenoAge2\autoresearch\last_kept_train.py
+Total runs:        36
+Keep/discard/crash:12/21/3
+
+Best overall:
+   keep | val=0.775929 | mem_gb=0.021 | commit=ff859d7 | WEIGHT_DECAY 0.00025 -> 0.00026; val_cindex 0.775929 best_step 650
+
+Best kept:
+   keep | val=0.775929 | mem_gb=0.021 | commit=ff859d7 | WEIGHT_DECAY 0.00025 -> 0.00026; val_cindex 0.775929 best_step 650
+
+Recent runs:
+  crash | val=0.000000 | mem_gb=0.000 | commit=ff859d7 | crash: LEARNING_RATE 0.00195 -> 0.00215
+discard | val=0.775926 | mem_gb=0.021 | commit=ff859d7 | WEIGHT_DECAY 0.00026 -> 0.0002496; val_cindex 0.775926 best_step 650
+discard | val=0.774050 | mem_gb=0.018 | commit=ff859d7 | Mini-batch Cox (batch=1024) with cosine LR decay; val_cindex 0.774050 best_step 650
+discard | val=0.775929 | mem_gb=0.021 | commit=ff859d7 | WEIGHT_DECAY 0.00026 -> 0.0002704; val_cindex 0.775929 best_step 650
+discard | val=0.775926 | mem_gb=0.021 | commit=e26640d | WEIGHT_DECAY 0.00026 -> 0.0002392; val_cindex 0.775926 best_step 650
+Logged discard result: commit=e26640d val_cindex=0.775929 memory_gb=0.021
+Restored train.py from C:\Users\user\Desktop\PhenoAge2\autoresearch\last_kept_train.py
+Total runs:        37
+Keep/discard/crash:12/22/3
+
+Best overall:
+   keep | val=0.775929 | mem_gb=0.021 | commit=ff859d7 | WEIGHT_DECAY 0.00025 -> 0.00026; val_cindex 0.775929 best_step 650
+
+Best kept:
+   keep | val=0.775929 | mem_gb=0.021 | commit=ff859d7 | WEIGHT_DECAY 0.00025 -> 0.00026; val_cindex 0.775929 best_step 650
+
+Recent runs:
+discard | val=0.775926 | mem_gb=0.021 | commit=ff859d7 | WEIGHT_DECAY 0.00026 -> 0.0002496; val_cindex 0.775926 best_step 650
+discard | val=0.774050 | mem_gb=0.018 | commit=ff859d7 | Mini-batch Cox (batch=1024) with cosine LR decay; val_cindex 0.774050 best_step 650
+discard | val=0.775929 | mem_gb=0.021 | commit=ff859d7 | WEIGHT_DECAY 0.00026 -> 0.0002704; val_cindex 0.775929 best_step 650
+discard | val=0.775926 | mem_gb=0.021 | commit=e26640d | WEIGHT_DECAY 0.00026 -> 0.0002392; val_cindex 0.775926 best_step 650
+discard | val=0.775929 | mem_gb=0.021 | commit=e26640d | WEIGHT_DECAY 0.00026 -> 0.0002808; val_cindex 0.775929 best_step 650
