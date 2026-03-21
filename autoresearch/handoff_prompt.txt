@@ -5,7 +5,8 @@ Goal:
 
 Hard constraints:
 - Read `program.md`, `prepare.py`, `results.tsv`, `research_journal.md`, and `..\evaluation-protocol.md` before making changes.
-- Modify only `train.py`.
+- Only candidate-model changes may be made in `train.py`.
+- You may create or update orchestration files such as `run_until_stop.py`, status files, and log files if needed to keep the loop running unattended and recoverable.
 - Do not modify `prepare.py`, `..\evaluation-protocol.md`, or the dataset files.
 - Do not use the held-out `test` split for search.
 - Do not use chronological age directly or indirectly.
@@ -21,6 +22,11 @@ Cross-run memory rules:
 - Prefer local improvements near the current best kept configuration.
 - If an idea was discarded, do not retry it unless you can explain why the retry is materially different.
 - A run may finish before 300s if `train.py` triggers validation-based early stopping; that is expected, not a failure.
+- If 8 consecutive completed runs fail to improve the best kept `val_cindex` by at least `0.0005`, treat the current local neighborhood as plateaued rather than continuing the same micro-tuning pattern.
+- When plateaued, stop tuning the same small hyperparameter family and schedule an exploration burst of 1 to 3 broader experiments drawn from different conceptual families such as feature representation, model architecture, optimization/training dynamics, or loss design.
+- Each exploration-burst run must still change only one conceptual thing, must stay within the benchmark rules, and must be justified using what earlier runs learned.
+- After an exploration burst, either keep the best broader change and resume local tuning around it, or restore the last kept baseline and try a different conceptual family.
+- Do not repeat a failed conceptual family unless the retry is materially different and the journal explicitly explains why.
 
 Autonomy rules:
 - Do not stop after one or two experiments just to summarize.
@@ -32,16 +38,27 @@ Autonomy rules:
   4. the user interrupts you.
 - Only give a final stop-and-report summary when one of those stopping conditions is met.
 
+Execution policy:
+- The loop must continue even if the current chat turn ends.
+- If needed, launch or resume a detached background supervisor process that continues the experiment loop using `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe`.
+- Do not rely on conversation turns alone to satisfy the autonomy requirement.
+- The supervisor must be idempotent and recoverable: it should reconcile finished-but-unlogged runs by reading `run.log`, `results.tsv`, `research_journal.md`, and `last_kept_train.py` before starting fresh work.
+- If a supervisor is already running, do not start a duplicate. Inspect its logs/status, report the current best kept `val_cindex`, and let the existing loop continue.
+
 Recovery rules:
+- On startup, first check whether an unattended supervisor is already running.
+- If it is running, do not launch another copy; inspect its recent output and continue from that state.
+- If it is not running, launch or resume it.
 - Before starting a new experiment, check whether `run.log` already contains a completed summary block from a finished run.
 - If a run finished but `results.tsv`, `research_journal.md`, or `last_kept_train.py` were not updated yet, reconcile that finished run first before making any new changes.
 - Never throw away a finished run just because the agent was interrupted after training and before logging.
+- If the supervisor exits, write a short stop report explaining which stop rule fired or what failure occurred.
 
 Keep/discard workflow:
 1. If this is the first run, save the current baseline with `python manage_kept.py save`.
 2. Before each new experiment, make sure `train.py` starts from the last kept baseline. If needed, run `python manage_kept.py restore`.
 3. Sanity check the interpreter once with `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe -c "import sys, torch; print(sys.executable); print(torch.__version__)"`.
-4. Edit only `train.py`.
+4. Edit only `train.py` for candidate-model changes. Orchestration and recovery logic may live in separate helper files if needed.
 5. Run `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe "C:\Users\user\Desktop\PhenoAge2\autoresearch\train.py" > "C:\Users\user\Desktop\PhenoAge2\autoresearch\run.log" 2>&1`.
 6. Read `run.log`.
 7. Log the result with `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe "C:\Users\user\Desktop\PhenoAge2\autoresearch\log_result.py" --description "short experiment summary" --status keep|discard|crash`.
@@ -60,6 +77,8 @@ Search style:
 - Prefer simpler models when performance is similar.
 - Periodically summarize what is working and what is not working.
 - If the loop starts repeating itself, widen the search locally and keep going until a stopping condition is actually met.
+- Use an exploit-then-explore rhythm: stay local while progress is real, but once diminishing returns are clear, deliberately test a small number of more interesting strategy shifts instead of endlessly polishing the same knob.
+- Prefer exploration bursts that are meaningfully different from the recent run history, but still plausible given what the journal says about current bottlenecks.
 
 When updating the user:
 - Report the current best kept `val_cindex`.
