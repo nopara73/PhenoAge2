@@ -1,0 +1,12 @@
+{
+  "phenoage_c_index": 0.8680255348023732,
+  "pa2_c_index": 0.7664309242031015,
+  "delta": -0.10159461059927166,
+  "verdict": "inferior",
+  "benchmark_dataset": "nhanes3-phenoage",
+  "evaluation_split": "test",
+  "participants": 1872,
+  "aging_related_deaths": 542,
+  "candidate_model_path": "C:\\Users\\user\\Desktop\\PhenoAge2\\autoresearch\\candidate_pa2.pt",
+  "age_excluded_from_pa2_inputs": true
+}

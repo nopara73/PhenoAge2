@@ -1,389 +1,308 @@
+"""Fixed PA2 autoresearch harness.
+
+This file owns the immutable benchmark contract for PhenoAge 2.0 search:
+- frozen NHANES III package
+- frozen development/test split
+- allowed input features
+- original PhenoAge baseline scorer
+- development-only validation split helper
+- held-out C-index evaluation
 """
-One-time data preparation for autoresearch experiments.
-Downloads data shards and trains a BPE tokenizer.
 
-Usage:
-    python prepare.py                  # full prep (download + tokenizer)
-    python prepare.py --num-shards 8   # download only 8 shards (for testing)
+from __future__ import annotations
 
-Data and tokenizer are stored in ~/.cache/autoresearch/.
-"""
-
-import os
-import sys
-import time
-import math
 import argparse
-import pickle
-from multiprocessing import Pool
+import csv
+import json
+import math
+import random
+from pathlib import Path
 
-import requests
-import pyarrow.parquet as pq
-import rustbpe
-import tiktoken
+import numpy as np
 import torch
 
 # ---------------------------------------------------------------------------
-# Constants (fixed, do not modify)
+# Frozen benchmark configuration (do not modify in the search loop)
 # ---------------------------------------------------------------------------
 
-MAX_SEQ_LEN = 2048       # context length
-TIME_BUDGET = 300        # training time budget in seconds (5 minutes)
-EVAL_TOKENS = 40 * 524288  # number of tokens for val eval
+TIME_BUDGET = 300
+DEV_VAL_FRACTION = 0.20
+DEV_VAL_SEED = 20260321
+SUPERIORITY_THRESHOLD = 0.01
+NON_INFERIORITY_MARGIN = -0.01
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = REPO_ROOT / "nhanes3-phenoage"
+COHORT_PATH = DATA_DIR / "cohort.csv"
+OUTCOMES_PATH = DATA_DIR / "outcomes.csv"
+SPLIT_PATH = DATA_DIR / "frozen_split.csv"
+DEFAULT_CANDIDATE_MODEL_PATH = Path(__file__).resolve().parent / "candidate_pa2.pt"
+DEFAULT_RESULT_PATH = REPO_ROOT / "pa2_test_result.json"
+
+FEATURE_COLUMNS = (
+    "AMP",
+    "CEP",
+    "SGP",
+    "CRP",
+    "LMPPCNT",
+    "MVPSI",
+    "RWP",
+    "APPSI",
+    "WCP",
+)
+AGE_COLUMN = "HSAGEIR"
+TIME_COLUMN = "time_months"
+EVENT_COLUMN = "aging_related_event"
+ALLOWED_SPLITS = {"development", "test"}
 
 # ---------------------------------------------------------------------------
-# Configuration
+# Original PhenoAge constants
 # ---------------------------------------------------------------------------
 
-CACHE_DIR = os.path.join(os.path.expanduser("~"), ".cache", "autoresearch")
-DATA_DIR = os.path.join(CACHE_DIR, "data")
-TOKENIZER_DIR = os.path.join(CACHE_DIR, "tokenizer")
-BASE_URL = "https://huggingface.co/datasets/karpathy/climbmix-400b-shuffle/resolve/main"
-MAX_SHARD = 6542 # the last datashard is shard_06542.parquet
-VAL_SHARD = MAX_SHARD  # pinned validation shard (shard_06542)
-VAL_FILENAME = f"shard_{VAL_SHARD:05d}.parquet"
-VOCAB_SIZE = 8192
+ALBUMIN_G_PER_DL_TO_G_PER_L = 10.0
+CREATININE_MG_PER_DL_TO_UMOL_PER_L = 88.4
+GLUCOSE_MG_PER_DL_TO_MMOL_PER_L = 1.0 / 18.0182
+CRP_MG_PER_DL_TO_MG_PER_L = 10.0
 
-# BPE split pattern (GPT-4 style, with \p{N}{1,2} instead of {1,3})
-SPLIT_PATTERN = r"""'(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+\p{L}+|\p{N}{1,2}| ?[^\s\p{L}\p{N}]++[\r\n]*|\s*[\r\n]|\s+(?!\S)|\s+"""
-
-SPECIAL_TOKENS = [f"<|reserved_{i}|>" for i in range(4)]
-BOS_TOKEN = "<|reserved_0|>"
-
-# ---------------------------------------------------------------------------
-# Data download
-# ---------------------------------------------------------------------------
-
-def download_single_shard(index):
-    """Download one parquet shard with retries. Returns True on success."""
-    filename = f"shard_{index:05d}.parquet"
-    filepath = os.path.join(DATA_DIR, filename)
-    if os.path.exists(filepath):
-        return True
-
-    url = f"{BASE_URL}/{filename}"
-    max_attempts = 5
-    for attempt in range(1, max_attempts + 1):
-        try:
-            response = requests.get(url, stream=True, timeout=30)
-            response.raise_for_status()
-            temp_path = filepath + ".tmp"
-            with open(temp_path, "wb") as f:
-                for chunk in response.iter_content(chunk_size=1024 * 1024):
-                    if chunk:
-                        f.write(chunk)
-            os.rename(temp_path, filepath)
-            print(f"  Downloaded {filename}")
-            return True
-        except (requests.RequestException, IOError) as e:
-            print(f"  Attempt {attempt}/{max_attempts} failed for {filename}: {e}")
-            for path in [filepath + ".tmp", filepath]:
-                if os.path.exists(path):
-                    try:
-                        os.remove(path)
-                    except OSError:
-                        pass
-            if attempt < max_attempts:
-                time.sleep(2 ** attempt)
-    return False
+XB_INTERCEPT = -19.90667
+ALBUMIN_COEF = -0.03359355
+CREATININE_COEF = 0.009506491
+GLUCOSE_COEF = 0.1953192
+LOG_CRP_COEF = 0.09536762
+LYMPHOCYTE_PERCENT_COEF = -0.01199984
+MEAN_CELL_VOLUME_COEF = 0.02676401
+RDW_COEF = 0.3306156
+ALKALINE_PHOSPHATASE_COEF = 0.001868778
+WBC_COEF = 0.05542406
+AGE_COEF = 0.08035356
+MORTALITY_NUMERATOR_COEF = 1.51714
+MORTALITY_DENOMINATOR = 0.007692696
+PHENOAGE_LOG_COEF = 0.0055305
+PHENOAGE_DENOMINATOR = 0.090165
+PHENOAGE_INTERCEPT = 141.50225
 
 
-def download_data(num_shards, download_workers=8):
-    """Download training shards + pinned validation shard."""
-    os.makedirs(DATA_DIR, exist_ok=True)
-    num_train = min(num_shards, MAX_SHARD)
-    ids = list(range(num_train))
-    if VAL_SHARD not in ids:
-        ids.append(VAL_SHARD)
-
-    # Count what's already downloaded
-    existing = sum(1 for i in ids if os.path.exists(os.path.join(DATA_DIR, f"shard_{i:05d}.parquet")))
-    if existing == len(ids):
-        print(f"Data: all {len(ids)} shards already downloaded at {DATA_DIR}")
-        return
-
-    needed = len(ids) - existing
-    print(f"Data: downloading {needed} shards ({existing} already exist)...")
-
-    workers = max(1, min(download_workers, needed))
-    with Pool(processes=workers) as pool:
-        results = pool.map(download_single_shard, ids)
-
-    ok = sum(1 for r in results if r)
-    print(f"Data: {ok}/{len(ids)} shards ready at {DATA_DIR}")
-
-# ---------------------------------------------------------------------------
-# Tokenizer training
-# ---------------------------------------------------------------------------
-
-def list_parquet_files():
-    """Return sorted list of parquet file paths in the data directory."""
-    files = sorted(f for f in os.listdir(DATA_DIR) if f.endswith(".parquet") and not f.endswith(".tmp"))
-    return [os.path.join(DATA_DIR, f) for f in files]
+def read_csv_rows(path: Path) -> list[dict[str, str]]:
+    with path.open("r", newline="", encoding="utf-8-sig") as handle:
+        reader = csv.DictReader(handle)
+        if reader.fieldnames is None:
+            raise ValueError(f"{path} is missing a header row.")
+        rows = list(reader)
+    if not rows:
+        raise ValueError(f"{path} has no data rows.")
+    return rows
 
 
-def text_iterator(max_chars=1_000_000_000, doc_cap=10_000):
-    """Yield documents from training split (all shards except pinned val shard)."""
-    parquet_paths = [p for p in list_parquet_files() if not p.endswith(VAL_FILENAME)]
-    nchars = 0
-    for filepath in parquet_paths:
-        pf = pq.ParquetFile(filepath)
-        for rg_idx in range(pf.num_row_groups):
-            rg = pf.read_row_group(rg_idx)
-            for text in rg.column("text").to_pylist():
-                doc = text[:doc_cap] if len(text) > doc_cap else text
-                nchars += len(doc)
-                yield doc
-                if nchars >= max_chars:
-                    return
+def load_joined_rows() -> list[dict[str, str]]:
+    cohort_rows = {row["SEQN"]: row for row in read_csv_rows(COHORT_PATH)}
+    outcomes_rows = {row["SEQN"]: row for row in read_csv_rows(OUTCOMES_PATH)}
+    split_rows = {row["SEQN"]: row for row in read_csv_rows(SPLIT_PATH)}
+
+    if set(cohort_rows) != set(outcomes_rows) or set(cohort_rows) != set(split_rows):
+        raise ValueError("cohort/outcomes/split participant sets do not match.")
+
+    joined_rows: list[dict[str, str]] = []
+    for seqn in sorted(cohort_rows, key=int):
+        row = dict(cohort_rows[seqn])
+        row.update({k: v for k, v in outcomes_rows[seqn].items() if k != "SEQN"})
+        row["split"] = split_rows[seqn]["split"]
+        if row["split"] not in ALLOWED_SPLITS:
+            raise ValueError(f"Unexpected split for SEQN {seqn}: {row['split']}")
+        joined_rows.append(row)
+    return joined_rows
 
 
-def train_tokenizer():
-    """Train BPE tokenizer using rustbpe, save as tiktoken pickle."""
-    tokenizer_pkl = os.path.join(TOKENIZER_DIR, "tokenizer.pkl")
-    token_bytes_path = os.path.join(TOKENIZER_DIR, "token_bytes.pt")
+def get_rows_for_split(rows: list[dict[str, str]], split_name: str) -> list[dict[str, str]]:
+    if split_name not in ALLOWED_SPLITS:
+        raise ValueError(f"Unexpected split name: {split_name}")
+    return [row for row in rows if row["split"] == split_name]
 
-    if os.path.exists(tokenizer_pkl) and os.path.exists(token_bytes_path):
-        print(f"Tokenizer: already trained at {TOKENIZER_DIR}")
-        return
 
-    os.makedirs(TOKENIZER_DIR, exist_ok=True)
+def stratified_development_split(
+    rows: list[dict[str, str]],
+    val_fraction: float = DEV_VAL_FRACTION,
+    seed: int = DEV_VAL_SEED,
+) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    development_rows = get_rows_for_split(rows, "development")
+    grouped: dict[str, list[dict[str, str]]] = {"0": [], "1": []}
+    for row in development_rows:
+        grouped[row[EVENT_COLUMN]].append(row)
 
-    parquet_files = list_parquet_files()
-    if len(parquet_files) < 2:
-        print("Tokenizer: need at least 2 data shards (1 train + 1 val). Download more data first.")
-        sys.exit(1)
+    rng = random.Random(seed)
+    train_rows: list[dict[str, str]] = []
+    val_rows: list[dict[str, str]] = []
+    for label, label_rows in grouped.items():
+        shuffled = list(label_rows)
+        rng.shuffle(shuffled)
+        val_count = max(1, round(len(shuffled) * val_fraction))
+        if val_count >= len(shuffled):
+            val_count = len(shuffled) - 1
+        val_seqn = {row["SEQN"] for row in shuffled[:val_count]}
+        for row in label_rows:
+            if row["SEQN"] in val_seqn:
+                val_rows.append(row)
+            else:
+                train_rows.append(row)
 
-    # --- Train with rustbpe ---
-    print("Tokenizer: training BPE tokenizer...")
-    t0 = time.time()
+    train_rows.sort(key=lambda row: int(row["SEQN"]))
+    val_rows.sort(key=lambda row: int(row["SEQN"]))
+    return train_rows, val_rows
 
-    tokenizer = rustbpe.Tokenizer()
-    vocab_size_no_special = VOCAB_SIZE - len(SPECIAL_TOKENS)
-    tokenizer.train_from_iterator(text_iterator(), vocab_size_no_special, pattern=SPLIT_PATTERN)
 
-    # Build tiktoken encoding from trained merges
-    pattern = tokenizer.get_pattern()
-    mergeable_ranks = {bytes(k): v for k, v in tokenizer.get_mergeable_ranks()}
-    tokens_offset = len(mergeable_ranks)
-    special_tokens = {name: tokens_offset + i for i, name in enumerate(SPECIAL_TOKENS)}
-    enc = tiktoken.Encoding(
-        name="rustbpe",
-        pat_str=pattern,
-        mergeable_ranks=mergeable_ranks,
-        special_tokens=special_tokens,
+def feature_matrix(rows: list[dict[str, str]]) -> np.ndarray:
+    return np.asarray(
+        [[float(row[column]) for column in FEATURE_COLUMNS] for row in rows],
+        dtype=np.float32,
     )
 
-    # Save tokenizer
-    with open(tokenizer_pkl, "wb") as f:
-        pickle.dump(enc, f)
 
-    t1 = time.time()
-    print(f"Tokenizer: trained in {t1 - t0:.1f}s, saved to {tokenizer_pkl}")
-
-    # --- Build token_bytes lookup for BPB evaluation ---
-    print("Tokenizer: building token_bytes lookup...")
-    special_set = set(SPECIAL_TOKENS)
-    token_bytes_list = []
-    for token_id in range(enc.n_vocab):
-        token_str = enc.decode([token_id])
-        if token_str in special_set:
-            token_bytes_list.append(0)
-        else:
-            token_bytes_list.append(len(token_str.encode("utf-8")))
-    token_bytes_tensor = torch.tensor(token_bytes_list, dtype=torch.int32)
-    torch.save(token_bytes_tensor, token_bytes_path)
-    print(f"Tokenizer: saved token_bytes to {token_bytes_path}")
-
-    # Sanity check
-    test = "Hello world! Numbers: 123. Unicode: 你好"
-    encoded = enc.encode_ordinary(test)
-    decoded = enc.decode(encoded)
-    assert decoded == test, f"Tokenizer roundtrip failed: {test!r} -> {decoded!r}"
-    print(f"Tokenizer: sanity check passed (vocab_size={enc.n_vocab})")
-
-# ---------------------------------------------------------------------------
-# Runtime utilities (imported by train.py)
-# ---------------------------------------------------------------------------
-
-class Tokenizer:
-    """Minimal tokenizer wrapper. Training is handled above."""
-
-    def __init__(self, enc):
-        self.enc = enc
-        self.bos_token_id = enc.encode_single_token(BOS_TOKEN)
-
-    @classmethod
-    def from_directory(cls, tokenizer_dir=TOKENIZER_DIR):
-        with open(os.path.join(tokenizer_dir, "tokenizer.pkl"), "rb") as f:
-            enc = pickle.load(f)
-        return cls(enc)
-
-    def get_vocab_size(self):
-        return self.enc.n_vocab
-
-    def get_bos_token_id(self):
-        return self.bos_token_id
-
-    def encode(self, text, prepend=None, num_threads=8):
-        if prepend is not None:
-            prepend_id = prepend if isinstance(prepend, int) else self.enc.encode_single_token(prepend)
-        if isinstance(text, str):
-            ids = self.enc.encode_ordinary(text)
-            if prepend is not None:
-                ids.insert(0, prepend_id)
-        elif isinstance(text, list):
-            ids = self.enc.encode_ordinary_batch(text, num_threads=num_threads)
-            if prepend is not None:
-                for row in ids:
-                    row.insert(0, prepend_id)
-        else:
-            raise ValueError(f"Invalid input type: {type(text)}")
-        return ids
-
-    def decode(self, ids):
-        return self.enc.decode(ids)
+def survival_arrays(rows: list[dict[str, str]]) -> tuple[np.ndarray, np.ndarray]:
+    times = np.asarray([float(row[TIME_COLUMN]) for row in rows], dtype=np.float64)
+    events = np.asarray([int(row[EVENT_COLUMN]) for row in rows], dtype=np.int64)
+    return times, events
 
 
-def get_token_bytes(device="cpu"):
-    path = os.path.join(TOKENIZER_DIR, "token_bytes.pt")
-    with open(path, "rb") as f:
-        return torch.load(f, map_location=device)
+def fit_standardizer(rows: list[dict[str, str]]) -> tuple[np.ndarray, np.ndarray]:
+    features = feature_matrix(rows)
+    mean = features.mean(axis=0)
+    std = features.std(axis=0)
+    std[std == 0.0] = 1.0
+    return mean.astype(np.float32), std.astype(np.float32)
 
 
-def _document_batches(split, tokenizer_batch_size=128):
-    """Infinite iterator over document batches from parquet files."""
-    parquet_paths = list_parquet_files()
-    assert len(parquet_paths) > 0, "No parquet files found. Run prepare.py first."
-    val_path = os.path.join(DATA_DIR, VAL_FILENAME)
-    if split == "train":
-        parquet_paths = [p for p in parquet_paths if p != val_path]
-        assert len(parquet_paths) > 0, "No training shards found."
-    else:
-        parquet_paths = [val_path]
-    epoch = 1
-    while True:
-        for filepath in parquet_paths:
-            pf = pq.ParquetFile(filepath)
-            for rg_idx in range(pf.num_row_groups):
-                rg = pf.read_row_group(rg_idx)
-                batch = rg.column('text').to_pylist()
-                for i in range(0, len(batch), tokenizer_batch_size):
-                    yield batch[i:i+tokenizer_batch_size], epoch
-        epoch += 1
+def tensorize_features(rows: list[dict[str, str]], device: torch.device | str) -> torch.Tensor:
+    return torch.tensor(feature_matrix(rows), dtype=torch.float32, device=device)
 
 
-def make_dataloader(tokenizer, B, T, split, buffer_size=1000):
-    """
-    BOS-aligned dataloader with best-fit packing.
-    Every row starts with BOS. Documents packed using best-fit to minimize cropping.
-    When no document fits remaining space, crops shortest doc to fill exactly.
-    100% utilization (no padding).
-    """
-    assert split in ["train", "val"]
-    row_capacity = T + 1
-    batches = _document_batches(split)
-    bos_token = tokenizer.get_bos_token_id()
-    doc_buffer = []
-    epoch = 1
+def _compute_phenoage_xb(row: dict[str, str], include_age: bool) -> float:
+    xb = (
+        XB_INTERCEPT
+        + ALBUMIN_COEF * (float(row["AMP"]) * ALBUMIN_G_PER_DL_TO_G_PER_L)
+        + CREATININE_COEF * (float(row["CEP"]) * CREATININE_MG_PER_DL_TO_UMOL_PER_L)
+        + GLUCOSE_COEF * (float(row["SGP"]) * GLUCOSE_MG_PER_DL_TO_MMOL_PER_L)
+        + LOG_CRP_COEF * math.log(float(row["CRP"]) * CRP_MG_PER_DL_TO_MG_PER_L)
+        + LYMPHOCYTE_PERCENT_COEF * float(row["LMPPCNT"])
+        + MEAN_CELL_VOLUME_COEF * float(row["MVPSI"])
+        + RDW_COEF * float(row["RWP"])
+        + ALKALINE_PHOSPHATASE_COEF * float(row["APPSI"])
+        + WBC_COEF * float(row["WCP"])
+    )
+    if include_age:
+        xb += AGE_COEF * float(row[AGE_COLUMN])
+    return xb
 
-    def refill_buffer():
-        nonlocal epoch
-        doc_batch, epoch = next(batches)
-        token_lists = tokenizer.encode(doc_batch, prepend=bos_token)
-        doc_buffer.extend(token_lists)
 
-    # Pre-allocate buffers: [inputs (B*T) | targets (B*T)]
-    row_buffer = torch.empty((B, row_capacity), dtype=torch.long)
-    cpu_buffer = torch.empty(2 * B * T, dtype=torch.long, pin_memory=True)
-    gpu_buffer = torch.empty(2 * B * T, dtype=torch.long, device="cuda")
-    cpu_inputs = cpu_buffer[:B * T].view(B, T)
-    cpu_targets = cpu_buffer[B * T:].view(B, T)
-    inputs = gpu_buffer[:B * T].view(B, T)
-    targets = gpu_buffer[B * T:].view(B, T)
+def compute_phenoage(row: dict[str, str], include_age: bool = True) -> float:
+    xb = _compute_phenoage_xb(row, include_age=include_age)
+    mortality_component = MORTALITY_NUMERATOR_COEF * math.exp(xb) / MORTALITY_DENOMINATOR
+    return PHENOAGE_INTERCEPT + math.log(PHENOAGE_LOG_COEF * mortality_component) / PHENOAGE_DENOMINATOR
 
-    while True:
-        for row_idx in range(B):
-            pos = 0
-            while pos < row_capacity:
-                while len(doc_buffer) < buffer_size:
-                    refill_buffer()
 
-                remaining = row_capacity - pos
+def compute_original_phenoage_scores(rows: list[dict[str, str]]) -> np.ndarray:
+    return np.asarray([compute_phenoage(row, include_age=True) for row in rows], dtype=np.float64)
 
-                # Find largest doc that fits entirely
-                best_idx = -1
-                best_len = 0
-                for i, doc in enumerate(doc_buffer):
-                    doc_len = len(doc)
-                    if doc_len <= remaining and doc_len > best_len:
-                        best_idx = i
-                        best_len = doc_len
 
-                if best_idx >= 0:
-                    doc = doc_buffer.pop(best_idx)
-                    row_buffer[row_idx, pos:pos + len(doc)] = torch.tensor(doc, dtype=torch.long)
-                    pos += len(doc)
-                else:
-                    # No doc fits — crop shortest to fill remaining
-                    shortest_idx = min(range(len(doc_buffer)), key=lambda i: len(doc_buffer[i]))
-                    doc = doc_buffer.pop(shortest_idx)
-                    row_buffer[row_idx, pos:pos + remaining] = torch.tensor(doc[:remaining], dtype=torch.long)
-                    pos += remaining
+def compute_phenoage_without_age_scores(rows: list[dict[str, str]]) -> np.ndarray:
+    return np.asarray([compute_phenoage(row, include_age=False) for row in rows], dtype=np.float64)
 
-        cpu_inputs.copy_(row_buffer[:, :-1])
-        cpu_targets.copy_(row_buffer[:, 1:])
-        gpu_buffer.copy_(cpu_buffer, non_blocking=True)
-        yield inputs, targets, epoch
 
-# ---------------------------------------------------------------------------
-# Evaluation (DO NOT CHANGE — this is the fixed metric)
-# ---------------------------------------------------------------------------
+def harrell_c_index(times: np.ndarray, events: np.ndarray, scores: np.ndarray) -> float:
+    concordant = 0.0
+    tied = 0.0
+    comparable = 0.0
+    n = len(times)
+    for i in range(n):
+        for j in range(i + 1, n):
+            ti, tj = times[i], times[j]
+            ei, ej = events[i], events[j]
+            si, sj = scores[i], scores[j]
+
+            if ti == tj and ei == ej == 1:
+                comparable += 1.0
+                if si == sj:
+                    tied += 1.0
+                elif si > sj:
+                    concordant += 1.0
+                continue
+
+            if ei == 1 and ti < tj:
+                comparable += 1.0
+                if si == sj:
+                    tied += 1.0
+                elif si > sj:
+                    concordant += 1.0
+            elif ej == 1 and tj < ti:
+                comparable += 1.0
+                if si == sj:
+                    tied += 1.0
+                elif sj > si:
+                    concordant += 1.0
+
+    if comparable == 0.0:
+        raise ValueError("No comparable pairs available for C-index.")
+    return (concordant + 0.5 * tied) / comparable
+
 
 @torch.no_grad()
-def evaluate_bpb(model, tokenizer, batch_size):
-    """
-    Bits per byte (BPB): vocab size-independent evaluation metric.
-    Sums per-token cross-entropy (in nats), sums target byte lengths,
-    then converts nats/byte to bits/byte. Special tokens (byte length 0)
-    are excluded from both sums.
-    Uses fixed MAX_SEQ_LEN so results are comparable across configs.
-    """
-    token_bytes = get_token_bytes(device="cuda")
-    val_loader = make_dataloader(tokenizer, batch_size, MAX_SEQ_LEN, "val")
-    steps = EVAL_TOKENS // (batch_size * MAX_SEQ_LEN)
-    total_nats = 0.0
-    total_bytes = 0
-    for _ in range(steps):
-        x, y, _ = next(val_loader)
-        loss_flat = model(x, y, reduction='none').view(-1)
-        y_flat = y.view(-1)
-        nbytes = token_bytes[y_flat]
-        mask = nbytes > 0
-        total_nats += (loss_flat * mask).sum().item()
-        total_bytes += nbytes.sum().item()
-    return total_nats / (math.log(2) * total_bytes)
+def evaluate_cindex(model: torch.nn.Module, rows: list[dict[str, str]], device: torch.device | str) -> float:
+    model.eval()
+    scores = model(tensorize_features(rows, device)).reshape(-1).detach().cpu().numpy()
+    times, events = survival_arrays(rows)
+    return harrell_c_index(times, events, scores)
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Prepare data and tokenizer for autoresearch")
-    parser.add_argument("--num-shards", type=int, default=10, help="Number of training shards to download (-1 = all). Val shard is always pinned.")
-    parser.add_argument("--download-workers", type=int, default=8, help="Number of parallel download workers")
+@torch.no_grad()
+def score_scripted_model(model_path: Path, rows: list[dict[str, str]], device: torch.device | str) -> np.ndarray:
+    model = torch.jit.load(str(model_path), map_location=device)
+    model.eval()
+    features = tensorize_features(rows, device)
+    return model(features).reshape(-1).detach().cpu().numpy()
+
+
+def final_verdict(delta: float) -> str:
+    if delta >= SUPERIORITY_THRESHOLD:
+        return "superior"
+    if delta > NON_INFERIORITY_MARGIN:
+        return "non-inferior"
+    return "inferior"
+
+
+def build_result_summary(pa2_c_index: float, phenoage_c_index: float) -> dict[str, float | str]:
+    delta = pa2_c_index - phenoage_c_index
+    return {
+        "phenoage_c_index": phenoage_c_index,
+        "pa2_c_index": pa2_c_index,
+        "delta": delta,
+        "verdict": final_verdict(delta),
+    }
+
+
+def write_json(path: Path, payload: dict[str, object]) -> None:
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Validate the fixed PA2 autoresearch harness.")
+    parser.add_argument(
+        "--show-counts",
+        action="store_true",
+        help="Print frozen split counts and baseline held-out C-index.",
+    )
     args = parser.parse_args()
 
-    num_shards = MAX_SHARD if args.num_shards == -1 else args.num_shards
+    rows = load_joined_rows()
+    development_rows = get_rows_for_split(rows, "development")
+    test_rows = get_rows_for_split(rows, "test")
+    train_rows, val_rows = stratified_development_split(rows)
+    print(f"Loaded {len(rows)} joined participants from {DATA_DIR}")
+    print(f"Development participants: {len(development_rows)}")
+    print(f"Test participants: {len(test_rows)}")
+    print(f"Development train/val split: {len(train_rows)}/{len(val_rows)}")
+    if args.show_counts:
+        times, events = survival_arrays(test_rows)
+        phenoage_c = harrell_c_index(times, events, compute_original_phenoage_scores(test_rows))
+        print(f"Held-out PhenoAge C-index: {phenoage_c:.6f}")
 
-    print(f"Cache directory: {CACHE_DIR}")
-    print()
 
-    # Step 1: Download data
-    download_data(num_shards, download_workers=args.download_workers)
-    print()
-
-    # Step 2: Train tokenizer
-    train_tokenizer()
-    print()
-    print("Done! Ready to train.")
+if __name__ == "__main__":
+    main()
