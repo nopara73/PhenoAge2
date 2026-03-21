@@ -1,0 +1,9 @@
+- Albumin
+- Creatinine
+- Glucose
+- C-reactive protein
+- Lymphocyte percent
+- Mean red cell volume
+- Red cell distribution width
+- Alkaline phosphatase
+- White blood cell count
