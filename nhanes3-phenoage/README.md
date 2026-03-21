@@ -4,9 +4,9 @@ This folder is a data-only NHANES III package for strict PhenoAge-style downstre
 
 ## Files
 
+- `README.md`
 - `cohort.csv`
 - `outcomes.csv`
-- `README.md`
 - `data_dictionary.md`
 - `manifest.json`
 
@@ -26,11 +26,12 @@ This folder is a data-only NHANES III package for strict PhenoAge-style downstre
 The canonical analysis cohort is defined by the following ordered filters:
 
 1. Keep mortality-eligible participants with `eligstat == 1`.
-2. Keep adults with `HSAGEIR >= 18`.
-3. Apply one complete-case filter for `HSAGEIR`, `AMP`, `CEP`, `SGP`, `CRP`, `LMPPCNT`, `MVPSI`, `RWP`, `APPSI`, and `WCP`.
-4. Write both `cohort.csv` and `outcomes.csv` from that same final cohort.
+2. Keep adults with `HSAGEIR >= 20`.
+3. Keep participants with `PHPFAST >= 8`.
+4. Apply one complete-case filter for `HSAGEIR`, `AMP`, `CEP`, `SGP`, `CRP`, `LMPPCNT`, `MVPSI`, `RWP`, `APPSI`, and `WCP`.
+5. Write both `cohort.csv` and `outcomes.csv` from that same final cohort.
 
-This means the complete-case filter is applied after the adult and eligibility filters and before writing both CSVs.
+This means the complete-case filter is applied after the adult, eligibility, and fasting filters and before writing both CSVs.
 
 ## Artifact Schemas
 
@@ -87,10 +88,10 @@ Excluded UCOD buckets:
 
 ## Counts
 
-- Final cohort rows in `cohort.csv`: 15954
-- Final cohort rows in `outcomes.csv`: 15954
-- All-cause deaths in final cohort: 6561
-- Aging-related deaths in final cohort: 4669
+- Final cohort rows in `cohort.csv`: 9358
+- Final cohort rows in `outcomes.csv`: 9358
+- All-cause deaths in final cohort: 3797
+- Aging-related deaths in final cohort: 2710
 
 ## Notes
 

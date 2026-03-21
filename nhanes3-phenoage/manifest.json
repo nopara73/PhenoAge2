@@ -1,7 +1,8 @@
 {
   "package_name": "nhanes3-phenoage",
-  "created_at_utc": "2026-03-21T15:12:36+00:00",
-  "inclusion_rule_code": "adult_eligible_completecase_phenoage9_plus_age",
+  "created_at_utc": "2026-03-21T16:02:02+00:00",
+  "inclusion_rule_code": "adult20_eligible_fast8_completecase_phenoage9_plus_age",
+  "inclusion_rule_text": "Keep participants with eligstat == 1, HSAGEIR >= 20, and PHPFAST >= 8, then apply one complete-case filter on HSAGEIR plus the 9 PhenoAge biomarkers.",
   "source_version": {
     "survey": "NHANES III",
     "mortality_linkage": "PUBLIC-USE LINKED MORTALITY FOLLOW-UP THROUGH DECEMBER 31, 2019"
@@ -38,9 +39,13 @@
     ]
   },
   "row_counts": {
-    "cohort.csv": 15954,
-    "outcomes.csv": 15954,
+    "cohort.csv": 9358,
+    "outcomes.csv": 9358,
     "equal": true
+  },
+  "death_counts": {
+    "all_cause": 3797,
+    "aging_related": 2710
   },
   "cohort_outcomes_seqn_match": true,
   "time_months_definition": "Copied directly from permth_exm.",
@@ -64,13 +69,13 @@
   },
   "files": {
     "cohort.csv": {
-      "sha256": "26b539b70169132bb0eb462510170cf4f9e4d5503fc99252b1719de555dd00bb"
+      "sha256": "a8dbf1cd650346c2e4c46db8aa4fa2ad57837e7bbf0901c2475f06f189118312"
     },
     "outcomes.csv": {
-      "sha256": "c0bd2ccd34bd2183bd6887d7f35d98e5e37b1b9bc653c1e29072ee2b59e96494"
+      "sha256": "64e8328a6b3175c590c40927b356bacc7faf040aa5d07d186bdabf5be1a15809"
     },
     "README.md": {
-      "sha256": "ee2fbfcede434dcca38d53c01ed83d8f338febeb8c130fcf1e315fbc3dcd6e89"
+      "sha256": "e1e78ff4dee7e84c73d124b151119423dfb6e8544edc2b08c4beef6f6e156fc2"
     },
     "data_dictionary.md": {
       "sha256": "a3ac44fde936b4793b38d7f67df3f9a4e7e93c860d741d3b6d38b627da0c073e"
