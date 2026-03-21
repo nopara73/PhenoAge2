@@ -26,6 +26,8 @@ The benchmark is frozen. Do not redefine it.
 - All preprocessing must be fit only on the training portion of each development-fold split.
 - The headline comparison metric is held-out `C-index`.
 - Final success categories are `superior`, `non-inferior`, or `inferior` as defined in `../evaluation-protocol.md`.
+- Use the existing environment at `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe`.
+- Do not install dependencies, create a new environment, or use `uv run`.
 
 ## Experimentation Goal
 
@@ -106,16 +108,17 @@ When choosing the next run:
 ## Experiment Loop
 
 1. Review the current git state.
-2. Run `python summarize_results.py` and read `results.tsv` plus `research_journal.md`.
-3. If needed, restore the last kept baseline with `python manage_kept.py restore`.
-4. Modify only `train.py`.
-5. Run `.venv\Scripts\python.exe "train.py" > "run.log" 2>&1`.
-6. Read out the results from `run.log`.
-7. Record the result in `results.tsv` with `python log_result.py --description "..." --status keep|discard|crash`.
-8. Append a short entry to `research_journal.md` with the hypothesis, outcome, learning, and next move.
-9. Keep the run only if `val_cindex` improves meaningfully or achieves the same result with less complexity.
-10. If the run is kept, save it with `python manage_kept.py save`.
-11. If the run is discarded or crashes, restore `train.py` from the last kept version with `python manage_kept.py restore`.
+2. Sanity check the interpreter once with `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe -c "import sys, torch; print(sys.executable); print(torch.__version__)"`.
+3. Run `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe "C:\Users\user\Desktop\PhenoAge2\autoresearch\summarize_results.py"` and read `results.tsv` plus `research_journal.md`.
+4. If needed, restore the last kept baseline with `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe "C:\Users\user\Desktop\PhenoAge2\autoresearch\manage_kept.py" restore`.
+5. Modify only `train.py`.
+6. Run `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe "C:\Users\user\Desktop\PhenoAge2\autoresearch\train.py" > "C:\Users\user\Desktop\PhenoAge2\autoresearch\run.log" 2>&1`.
+7. Read out the results from `run.log`.
+8. Record the result in `results.tsv` with `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe "C:\Users\user\Desktop\PhenoAge2\autoresearch\log_result.py" --description "..." --status keep|discard|crash`.
+9. Append a short entry to `research_journal.md` with the hypothesis, outcome, learning, and next move.
+10. Keep the run only if `val_cindex` improves meaningfully or achieves the same result with less complexity.
+11. If the run is kept, save it with `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe "C:\Users\user\Desktop\PhenoAge2\autoresearch\manage_kept.py" save`.
+12. If the run is discarded or crashes, restore `train.py` from the last kept version with `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe "C:\Users\user\Desktop\PhenoAge2\autoresearch\manage_kept.py" restore`.
 
 ## Priority Order
 

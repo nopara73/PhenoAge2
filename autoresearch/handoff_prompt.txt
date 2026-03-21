@@ -10,6 +10,9 @@ Hard constraints:
 - Do not use the held-out `test` split for search.
 - Do not use chronological age directly or indirectly.
 - Do not create git commits unless explicitly asked by the user.
+- Do not install dependencies, create a new virtual environment, or use `uv run`.
+- This repo already has a working environment at `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe`.
+- Always invoke Python scripts with that exact interpreter, never with bare `python`.
 
 Cross-run memory rules:
 - Before every experiment, run `python summarize_results.py` and read the latest journal entries.
@@ -21,19 +24,20 @@ Cross-run memory rules:
 Keep/discard workflow:
 1. If this is the first run, save the current baseline with `python manage_kept.py save`.
 2. Before each new experiment, make sure `train.py` starts from the last kept baseline. If needed, run `python manage_kept.py restore`.
-3. Edit only `train.py`.
-4. Run `.venv\Scripts\python.exe "train.py" > "run.log" 2>&1`.
-5. Read `run.log`.
-6. Log the result with `python log_result.py --description "short experiment summary" --status keep|discard|crash`.
-7. Append a short entry to `research_journal.md` with:
+3. Sanity check the interpreter once with `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe -c "import sys, torch; print(sys.executable); print(torch.__version__)"`.
+4. Edit only `train.py`.
+5. Run `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe "C:\Users\user\Desktop\PhenoAge2\autoresearch\train.py" > "C:\Users\user\Desktop\PhenoAge2\autoresearch\run.log" 2>&1`.
+6. Read `run.log`.
+7. Log the result with `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe "C:\Users\user\Desktop\PhenoAge2\autoresearch\log_result.py" --description "short experiment summary" --status keep|discard|crash`.
+8. Append a short entry to `research_journal.md` with:
    - hypothesis
    - change
    - result
    - decision
    - learning
    - next
-8. If the run is better in a meaningful way, keep it and run `python manage_kept.py save`.
-9. If the run is worse or crashes, run `python manage_kept.py restore` before trying the next idea.
+9. If the run is better in a meaningful way, keep it and run `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe "C:\Users\user\Desktop\PhenoAge2\autoresearch\manage_kept.py" save`.
+10. If the run is worse or crashes, run `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe "C:\Users\user\Desktop\PhenoAge2\autoresearch\manage_kept.py" restore` before trying the next idea.
 
 Search style:
 - Favor small, disciplined iterations over big rewrites.
