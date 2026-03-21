@@ -1,0 +1,79 @@
+{
+  "package_name": "nhanes3-phenoage",
+  "created_at_utc": "2026-03-21T15:12:36+00:00",
+  "inclusion_rule_code": "adult_eligible_completecase_phenoage9_plus_age",
+  "source_version": {
+    "survey": "NHANES III",
+    "mortality_linkage": "PUBLIC-USE LINKED MORTALITY FOLLOW-UP THROUGH DECEMBER 31, 2019"
+  },
+  "source_files": [
+    "nhanes3/1a/adult.dat",
+    "nhanes3/1a/adult.sas",
+    "nhanes3/1a/lab.dat",
+    "nhanes3/1a/lab.sas",
+    "nhanes3/mortality/NHANES_III_MORT_2019_PUBLIC.dat",
+    "nhanes3/mortality/SAS_ReadInProgramAllSurveys.sas"
+  ],
+  "expected_columns": {
+    "cohort.csv": [
+      "SEQN",
+      "HSAGEIR",
+      "AMP",
+      "CEP",
+      "SGP",
+      "CRP",
+      "LMPPCNT",
+      "MVPSI",
+      "RWP",
+      "APPSI",
+      "WCP"
+    ],
+    "outcomes.csv": [
+      "SEQN",
+      "permth_exm",
+      "time_months",
+      "mortstat",
+      "ucod_leading",
+      "aging_related_event"
+    ]
+  },
+  "row_counts": {
+    "cohort.csv": 15954,
+    "outcomes.csv": 15954,
+    "equal": true
+  },
+  "cohort_outcomes_seqn_match": true,
+  "time_months_definition": "Copied directly from permth_exm.",
+  "endpoint_definition": {
+    "included_ucod_buckets": [
+      "UCOD_001",
+      "UCOD_002",
+      "UCOD_003",
+      "UCOD_005",
+      "UCOD_006",
+      "UCOD_007",
+      "UCOD_009"
+    ],
+    "excluded_ucod_buckets": [
+      "UCOD_004",
+      "UCOD_008",
+      "UCOD_010"
+    ],
+    "mortstat_1_non_aging_death_maps_to_0": true,
+    "mortstat_0_maps_to_0": true
+  },
+  "files": {
+    "cohort.csv": {
+      "sha256": "26b539b70169132bb0eb462510170cf4f9e4d5503fc99252b1719de555dd00bb"
+    },
+    "outcomes.csv": {
+      "sha256": "c0bd2ccd34bd2183bd6887d7f35d98e5e37b1b9bc653c1e29072ee2b59e96494"
+    },
+    "README.md": {
+      "sha256": "ee2fbfcede434dcca38d53c01ed83d8f338febeb8c130fcf1e315fbc3dcd6e89"
+    },
+    "data_dictionary.md": {
+      "sha256": "a3ac44fde936b4793b38d7f67df3f9a4e7e93c860d741d3b6d38b627da0c073e"
+    }
+  }
+}
