@@ -33,3 +33,18 @@ The main benchmark task is to predict time to aging-related death from baseline 
 - Non-aging deaths are not counted as events, consistent with the original PhenoAge focus on aging-related mortality
 
 In other words, both models must be evaluated on the same participants, using the same follow-up information and the same aging-related mortality time-to-event outcome. The only intended input difference is that original `PhenoAge` is allowed to use age, while `PhenoAge 2.0` is not.
+
+## Frozen Final Test Set
+
+A participant-level final test set is frozen before model search begins.
+
+- Split file: `nhanes3-phenoage/frozen_split.csv`
+- Split manifest: `nhanes3-phenoage/frozen_split_manifest.json`
+- Test fraction: `0.20`
+- Random seed: `20260321`
+- Split unit: participant (`SEQN`)
+- Stratification field: `aging_related_event`
+
+The `test` participants in `nhanes3-phenoage/frozen_split.csv` are the untouched final benchmark set. They may be used only for the one-time final comparison between original `PhenoAge` and the final selected `PhenoAge 2.0` model.
+
+All model search, candidate comparison, feature engineering, preprocessing fitting, and hyperparameter tuning must be performed only on participants marked `development`. If the frozen test set is used to guide further model changes, it is no longer a valid untouched test set for the main benchmark.

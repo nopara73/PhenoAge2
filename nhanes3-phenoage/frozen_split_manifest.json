@@ -1,0 +1,20 @@
+{
+  "source_outcomes": "C:\\Users\\user\\Desktop\\PhenoAge2\\nhanes3-phenoage\\outcomes.csv",
+  "test_fraction": 0.2,
+  "random_seed": 20260321,
+  "participant_count": 9358,
+  "counts_by_split": {
+    "development": 7486,
+    "test": 1872
+  },
+  "aging_related_event_counts": {
+    "development": {
+      "0": 5318,
+      "1": 2168
+    },
+    "test": {
+      "0": 1330,
+      "1": 542
+    }
+  }
+}
