@@ -8,6 +8,11 @@ Read these files before starting:
 
 - `prepare.py` — fixed harness. Loads the frozen NHANES benchmark, provides the development split, computes C-index, and defines the final comparison contract. Do not modify.
 - `train.py` — the only file you edit. This is where candidate PA2 models are defined and trained.
+- `results.tsv` — append-only experiment ledger. Read it before choosing the next experiment.
+- `research_journal.md` — short natural-language memory of hypotheses, outcomes, and next steps.
+- `summarize_results.py` — helper that prints the current leaderboard and recent history.
+- `manage_kept.py` — helper that saves or restores the last kept `train.py`.
+- `log_result.py` — helper that parses `run.log` and appends one row to `results.tsv`.
 - `../evaluation-protocol.md` — the frozen benchmark rules.
 
 ## Fixed Benchmark Rules
@@ -80,17 +85,37 @@ commit	val_cindex	memory_gb	status	description
 
 Higher `val_cindex` is better.
 
+## Cross-Run Memory Policy
+
+This search loop must build on previous runs instead of trying disconnected ideas.
+
+Before editing `train.py`:
+
+- Read `results.tsv` and `research_journal.md`.
+- Run `summarize_results.py` to see the current best and the recent history.
+- Start from the last kept version of `train.py`, not from a discarded one.
+- Choose one experiment that follows from prior results.
+
+When choosing the next run:
+
+- Change only one conceptual thing at a time.
+- Prefer local moves near the current best configuration.
+- Do not repeat a discarded idea unless the journal explains why the retry is materially different.
+- If two ideas are equally plausible, prefer the simpler one.
+
 ## Experiment Loop
 
 1. Review the current git state.
-2. Modify only `train.py`.
-3. Commit the experiment.
-4. Run `uv run train.py > run.log 2>&1`.
-5. Read out the results from `run.log`.
-6. If the run crashes, inspect the traceback, decide whether to fix or discard, and record the crash.
-7. Record the result in `results.tsv` without committing the TSV file.
-8. Keep the commit only if `val_cindex` improves meaningfully or achieves the same result with less complexity.
-9. Otherwise revert to the previous good state and continue.
+2. Run `python summarize_results.py` and read `results.tsv` plus `research_journal.md`.
+3. If needed, restore the last kept baseline with `python manage_kept.py restore`.
+4. Modify only `train.py`.
+5. Run `.venv\Scripts\python.exe "train.py" > "run.log" 2>&1`.
+6. Read out the results from `run.log`.
+7. Record the result in `results.tsv` with `python log_result.py --description "..." --status keep|discard|crash`.
+8. Append a short entry to `research_journal.md` with the hypothesis, outcome, learning, and next move.
+9. Keep the run only if `val_cindex` improves meaningfully or achieves the same result with less complexity.
+10. If the run is kept, save it with `python manage_kept.py save`.
+11. If the run is discarded or crashes, restore `train.py` from the last kept version with `python manage_kept.py restore`.
 
 ## Priority Order
 

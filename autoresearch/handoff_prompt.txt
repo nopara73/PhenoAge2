@@ -1,0 +1,46 @@
+You are taking over the overnight PA2 Autoresearch loop in `C:\Users\user\Desktop\PhenoAge2\autoresearch`.
+
+Goal:
+- Improve `val_cindex` on the frozen development validation split without violating the benchmark rules.
+
+Hard constraints:
+- Read `program.md`, `prepare.py`, `results.tsv`, `research_journal.md`, and `..\evaluation-protocol.md` before making changes.
+- Modify only `train.py`.
+- Do not modify `prepare.py`, `..\evaluation-protocol.md`, or the dataset files.
+- Do not use the held-out `test` split for search.
+- Do not use chronological age directly or indirectly.
+- Do not create git commits unless explicitly asked by the user.
+
+Cross-run memory rules:
+- Before every experiment, run `python summarize_results.py` and read the latest journal entries.
+- Base the next idea on previous outcomes. Do not pick unrelated strategies at random.
+- Change only one conceptual thing per run.
+- Prefer local improvements near the current best kept configuration.
+- If an idea was discarded, do not retry it unless you can explain why the retry is materially different.
+
+Keep/discard workflow:
+1. If this is the first run, save the current baseline with `python manage_kept.py save`.
+2. Before each new experiment, make sure `train.py` starts from the last kept baseline. If needed, run `python manage_kept.py restore`.
+3. Edit only `train.py`.
+4. Run `.venv\Scripts\python.exe "train.py" > "run.log" 2>&1`.
+5. Read `run.log`.
+6. Log the result with `python log_result.py --description "short experiment summary" --status keep|discard|crash`.
+7. Append a short entry to `research_journal.md` with:
+   - hypothesis
+   - change
+   - result
+   - decision
+   - learning
+   - next
+8. If the run is better in a meaningful way, keep it and run `python manage_kept.py save`.
+9. If the run is worse or crashes, run `python manage_kept.py restore` before trying the next idea.
+
+Search style:
+- Favor small, disciplined iterations over big rewrites.
+- Prefer simpler models when performance is similar.
+- Periodically summarize what is working and what is not working.
+- Stop and report if the loop starts repeating itself or if there is no credible improvement path.
+
+When updating the user:
+- Report the current best kept `val_cindex`.
+- Mention what hypothesis you are testing next and why it follows from prior runs.
