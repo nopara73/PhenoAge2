@@ -20,6 +20,17 @@ Cross-run memory rules:
 - Change only one conceptual thing per run.
 - Prefer local improvements near the current best kept configuration.
 - If an idea was discarded, do not retry it unless you can explain why the retry is materially different.
+- A run may finish before 300s if `train.py` triggers validation-based early stopping; that is expected, not a failure.
+
+Autonomy rules:
+- Do not stop after one or two experiments just to summarize.
+- After each completed run, immediately choose the next single-knob experiment and continue.
+- Keep iterating until one of these happens:
+  1. 20 completed experiments, or
+  2. 8 hours have elapsed, or
+  3. 5 consecutive discarded runs show no meaningful improvement and you can clearly explain why the search is stuck, or
+  4. the user interrupts you.
+- Only give a final stop-and-report summary when one of those stopping conditions is met.
 
 Keep/discard workflow:
 1. If this is the first run, save the current baseline with `python manage_kept.py save`.

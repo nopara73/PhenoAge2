@@ -104,6 +104,19 @@ When choosing the next run:
 - Prefer local moves near the current best configuration.
 - Do not repeat a discarded idea unless the journal explains why the retry is materially different.
 - If two ideas are equally plausible, prefer the simpler one.
+- A run may finish before `TIME_BUDGET` if `train.py` triggers validation-based early stopping; treat that as a normal outcome.
+
+## Autonomy Policy
+
+Do not stop the search after one or two completed experiments just to summarize.
+
+- After each completed run, immediately choose the next single-knob experiment and continue.
+- Keep iterating until one of these happens:
+  - 20 completed experiments
+  - 8 hours elapsed
+  - 5 consecutive discarded runs without meaningful improvement and a clear explanation for why the search appears stuck
+  - explicit user interruption
+- Only stop-and-report when one of those conditions is met.
 
 ## Experiment Loop
 

@@ -1,0 +1,19 @@
+Device:            cuda
+Feature count:     9
+Train/val rows:    5988/1498
+Time budget:       60s
+step 00000 | loss: 8.220192 | val_cindex: 0.760951 | best: 0.760951 | remaining: 58.8s
+step 00500 | loss: 7.747972 | val_cindex: 0.768829 | best: 0.768829 | remaining: 47.2s
+step 01000 | loss: 7.620309 | val_cindex: 0.749857 | best: 0.768829 | remaining: 37.1s
+step 01500 | loss: 7.571108 | val_cindex: 0.737692 | best: 0.768829 | remaining: 28.4s
+step 02000 | loss: 7.537939 | val_cindex: 0.730166 | best: 0.768829 | remaining: 19.9s
+---
+val_cindex:       0.768829
+training_seconds: 40.1
+total_seconds:    70.5
+peak_vram_mb:     21.2
+num_steps:        2000
+num_params:       1091
+best_step:        500
+stop_reason:      early_stop
+artifact_path:    smoke_early_stop.pt
