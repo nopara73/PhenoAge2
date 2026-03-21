@@ -30,5 +30,6 @@ The main benchmark task is to predict time to aging-related death from baseline 
 - Follow-up time field: `time_months`
 - Event field: `aging_related_event`
 - Participant set: identical for both models
+- Non-aging deaths are not counted as events, consistent with the original PhenoAge focus on aging-related mortality
 
 In other words, both models must be evaluated on the same participants, using the same follow-up information and the same aging-related mortality time-to-event outcome. The only intended input difference is that original `PhenoAge` is allowed to use age, while `PhenoAge 2.0` is not.
