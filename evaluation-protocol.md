@@ -60,3 +60,20 @@ The primary evaluation metric for headline original `PhenoAge` vs `PhenoAge 2.0`
 This metric is used only for model comparison, not to redefine the underlying prediction task. The prediction task remains time to aging-related death on the frozen cohort.
 
 The original `PhenoAge` formulation remains Gompertz-based, but the benchmark comparison between original `PhenoAge` and `PhenoAge 2.0` is frozen to `C-index` so both methods can be judged with the same survival-aware discrimination metric.
+
+## Frozen Comparison Rule
+
+The comparison between original `PhenoAge` and `PhenoAge 2.0` is paired on the same untouched `test` participants from `nhanes3-phenoage/frozen_split.csv`.
+
+- Primary win condition: superiority
+- Secondary success condition: non-inferiority
+- Primary comparison metric: held-out `C-index`
+- Difference definition: `Delta = C-index(PhenoAge 2.0) - C-index(PhenoAge)`
+- Meaningful superiority threshold: `Delta >= +0.01`
+- Non-inferiority margin: `Delta > -0.01`
+
+`PhenoAge 2.0` is considered superior if its held-out test-set `C-index` exceeds the held-out test-set `C-index` of original `PhenoAge` by at least `0.01`.
+
+If superiority is not achieved, `PhenoAge 2.0` is still considered a secondary success if its held-out test-set `C-index` is no more than `0.01` below the held-out test-set `C-index` of original `PhenoAge`, despite excluding chronological age from its inputs.
+
+This rule is frozen before the final `PhenoAge 2.0` result is evaluated so that the benchmark cannot be redefined after seeing the outcome.
