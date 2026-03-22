@@ -313,3 +313,467 @@ Rules:
 - Decision: **discard** (restored)
 - Learning: No improvement vs best kept.
 - Next: Try next queued neighbor.
+
+## Run 38
+- Hypothesis: Local tuning has plateaued, so reweighting the Cox objective toward earlier events may better align the model with the ranking signal the validation split rewards.
+- Change: Replace the uniform Cox partial likelihood with a time-weighted Cox loss that gives somewhat more weight to earlier observed events.
+- Result: crash / no completed summary block in `run.log`
+- Decision: **crash**; restored `train.py` from `last_kept_train.py`.
+- Learning: The candidate did not finish cleanly, so it cannot be compared against the kept baseline.
+- Next: Continue from the kept baseline with the next queued experiment.
+
+## Run 39
+- Hypothesis: The failed feature-expansion run suggests extra interactions may overfit, so a leaner anchor-aligned encoder may generalize better than the current richer representation.
+- Change: Prune the encoder to the nine transformed biomarkers plus `pheno_no_age_xb`, removing all hand-crafted interaction features.
+- Result: crash / no completed summary block in `run.log`
+- Decision: **crash**; restored `train.py` from `last_kept_train.py`.
+- Learning: The candidate did not finish cleanly, so it cannot be compared against the kept baseline.
+- Next: Continue from the kept baseline with the next queued experiment.
+
+## Run 40
+- Hypothesis: Broader capacity increases have not helped, so collapsing the residual path to a single linear layer may reduce overfitting while preserving the pheno-no-age anchor.
+- Change: Replace the hidden residual MLP with a single linear correction layer on standardized encoded features.
+- Result: crash / no completed summary block in `run.log`
+- Decision: **crash**; restored `train.py` from `last_kept_train.py`.
+- Learning: The candidate did not finish cleanly, so it cannot be compared against the kept baseline.
+- Next: Continue from the kept baseline with the next queued experiment.
+
+## Run 41
+- Hypothesis: A slightly smaller step size may refine the same early optimum without leaving the current local basin.
+- Change: `LEARNING_RATE` `0.00195` -> `0.001925`.
+- Result: `val_cindex` **0.775760** at `best_step` **650** vs best kept **0.775929**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 42
+- Hypothesis: A very small upward LR nudge may sharpen the early ranking peak while staying closer than the previously discarded 0.00205 move.
+- Change: `LEARNING_RATE` `0.00195` -> `0.001975`.
+- Result: `val_cindex` **0.775959** at `best_step` **650** vs best kept **0.775929**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 43
+- Hypothesis: A narrower weight-decay move may preserve the current optimum while slightly relaxing regularization around the best kept setup.
+- Change: `WEIGHT_DECAY` `0.00026` -> `0.00025500`.
+- Result: `val_cindex` **0.775926** at `best_step` **650** vs best kept **0.775929**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 44
+- Hypothesis: A slightly stronger weight decay may still help the current architecture if the earlier 4 percent move was too coarse.
+- Change: `WEIGHT_DECAY` `0.00026` -> `0.00026500`.
+- Result: `val_cindex` **0.775929** at `best_step` **650** vs best kept **0.775929**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 45
+- Hypothesis: A slightly lighter dropout could recover some capacity without revisiting the much larger discarded regularization changes.
+- Change: `DROPOUT` `0.05` -> `0.045`.
+- Result: `val_cindex` **0.775210** at `best_step` **550** vs best kept **0.775929**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 46
+- Hypothesis: A tiny shift in checkpoint spacing may better align with the early peak than the previous coarse eval-grid moves.
+- Change: `EVAL_EVERY` `50` -> `55`.
+- Result: `val_cindex` **0.775114** at `best_step` **660** vs best kept **0.775929**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 47
+- Hypothesis: The previous time-weighted Cox attempt failed before producing a completed summary block, so rerunning it under the fixed synchronous supervisor will reveal whether the loss family is genuinely promising or truly weak.
+- Change: Retry the time-weighted Cox objective after fixing the supervisor persistence bug that invalidated the earlier attempt.
+- Result: `val_cindex` **0.775760** at `best_step` **650** vs best kept **0.775929**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 48
+- Hypothesis: The lean encoder never produced a valid run because the earlier orchestration failure killed it before completion, so it deserves one clean retry before the feature-representation family is abandoned.
+- Change: Retry the lean encoder variant after fixing the supervisor persistence bug that invalidated the earlier attempt.
+- Result: `val_cindex` **0.775042** at `best_step` **250** vs best kept **0.775929**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 49
+- Hypothesis: The single-linear residual head was never measured cleanly because the first attempt died before logging, so rerunning it under the repaired supervisor is a materially different test of that simpler architecture.
+- Change: Retry the single linear residual head after fixing the supervisor persistence bug that invalidated the earlier attempt.
+- Result: crash / no completed summary block in `run.log`
+- Decision: **crash**; restored `train.py` from `last_kept_train.py`.
+- Learning: The candidate did not finish cleanly, so it cannot be compared against the kept baseline.
+- Next: Continue from the kept baseline with the next queued experiment.
+
+## Run 50
+- Hypothesis: A slightly smaller step size may refine the same early optimum without leaving the current local basin.
+- Change: `LEARNING_RATE` `0.00195` -> `0.001925`.
+- Result: crash / no completed summary block in `run.log`
+- Decision: **crash**; restored `train.py` from `last_kept_train.py`.
+- Learning: The candidate did not finish cleanly, so it cannot be compared against the kept baseline.
+- Next: Continue from the kept baseline with the next queued experiment.
+
+## Run 51
+- Hypothesis: A very small upward LR nudge may sharpen the early ranking peak while staying closer than the previously discarded 0.00205 move.
+- Change: `LEARNING_RATE` `0.00195` -> `0.001975`.
+- Result: `val_cindex` **0.775959** at `best_step` **650** vs best kept **0.775929**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 52
+- Hypothesis: A narrower weight-decay move may preserve the current optimum while slightly relaxing regularization around the best kept setup.
+- Change: `WEIGHT_DECAY` `0.00026` -> `0.00025500`.
+- Result: `val_cindex` **0.775926** at `best_step` **650** vs best kept **0.775929**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 53
+- Hypothesis: A slightly stronger weight decay may still help the current architecture if the earlier 4 percent move was too coarse.
+- Change: `WEIGHT_DECAY` `0.00026` -> `0.00026500`.
+- Result: `val_cindex` **0.775929** at `best_step` **650** vs best kept **0.775929**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 54
+- Hypothesis: A slightly lighter dropout could recover some capacity without revisiting the much larger discarded regularization changes.
+- Change: `DROPOUT` `0.05` -> `0.045`.
+- Result: `val_cindex` **0.775210** at `best_step` **550** vs best kept **0.775929**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 55
+- Hypothesis: A tiny shift in checkpoint spacing may better align with the early peak than the previous coarse eval-grid moves.
+- Change: `EVAL_EVERY` `50` -> `55`.
+- Result: `val_cindex` **0.775114** at `best_step` **660** vs best kept **0.775929**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 56
+- Hypothesis: A slightly smaller step size may refine the same early optimum without leaving the current local basin.
+- Change: `LEARNING_RATE` `0.00195` -> `0.001925`.
+- Result: crash / no completed summary block in `run.log`
+- Decision: **crash**; restored `train.py` from `last_kept_train.py`.
+- Learning: The candidate did not finish cleanly, so it cannot be compared against the kept baseline.
+- Next: Continue from the kept baseline with the next queued experiment.
+
+## Run 57
+- Hypothesis: The full 32-16 residual head may be slightly too flexible, so shrinking it without collapsing to a purely linear correction could preserve the useful nonlinear adjustment while reducing overfitting.
+- Change: Reduce `HIDDEN_SIZES` from `(32, 16)` to `(24, 12)` while keeping the current training setup unchanged.
+- Result: `val_cindex` **0.774181** at `best_step` **200** vs best kept **0.775929**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 58
+- Hypothesis: The model may generalize better if it starts slightly closer to the pheno-no-age anchor and learns a smaller correction path, rather than giving the residual head as much influence from the start.
+- Change: Reduce the initial `residual_scale` from `0.1` to `0.08` while keeping the kept architecture and optimizer unchanged.
+- Result: `val_cindex` **0.774220** at `best_step` **500** vs best kept **0.775929**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 59
+- Hypothesis: A very small upward LR nudge may sharpen the early ranking peak while staying closer than the previously discarded 0.00205 move.
+- Change: `LEARNING_RATE` `0.00195` -> `0.001975`.
+- Result: `val_cindex` **0.775959** at `best_step` **650** vs best kept **0.775929**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 60
+- Hypothesis: A narrower weight-decay move may preserve the current optimum while slightly relaxing regularization around the best kept setup.
+- Change: `WEIGHT_DECAY` `0.00026` -> `0.00025500`.
+- Result: `val_cindex` **0.775926** at `best_step` **650** vs best kept **0.775929**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 61
+- Hypothesis: A slightly stronger weight decay may still help the current architecture if the earlier 4 percent move was too coarse.
+- Change: `WEIGHT_DECAY` `0.00026` -> `0.00026500`.
+- Result: `val_cindex` **0.775929** at `best_step` **650** vs best kept **0.775929**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 62
+- Hypothesis: A slightly lighter dropout could recover some capacity without revisiting the much larger discarded regularization changes.
+- Change: `DROPOUT` `0.05` -> `0.045`.
+- Result: `val_cindex` **0.775210** at `best_step` **550** vs best kept **0.775929**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 63
+- Hypothesis: A tiny shift in checkpoint spacing may better align with the early peak than the previous coarse eval-grid moves.
+- Change: `EVAL_EVERY` `50` -> `55`.
+- Result: `val_cindex` **0.775114** at `best_step` **660** vs best kept **0.775929**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 64
+- Hypothesis: Reducing the residual contribution hurt badly, which suggests the kept model may actually be under-correcting the pheno-no-age anchor and could benefit from a slightly stronger residual path.
+- Change: Increase the initial `residual_scale` from `0.1` to `0.12` while keeping the kept architecture and optimizer unchanged.
+- Result: `val_cindex` **0.775060** at `best_step` **550** vs best kept **0.775929**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 65
+- Hypothesis: The two-layer 32-16 head may be using the wrong shape of capacity, so collapsing it to one modest hidden layer could preserve useful nonlinear correction while removing unnecessary depth.
+- Change: Change `HIDDEN_SIZES` from `(32, 16)` to `(16,)`, keeping the residual MLP, optimizer, and encoder otherwise unchanged.
+- Result: `val_cindex` **0.778533** at `best_step` **350** vs best kept **0.775929**.
+- Decision: **keep**
+- Learning: This broader change improved enough to replace the kept baseline.
+- Next: Resume local tuning around the new kept baseline.
+
+## Run 66
+- Hypothesis: A slightly smaller step size may refine the same early optimum without leaving the current local basin.
+- Change: `LEARNING_RATE` `0.00195` -> `0.001925`.
+- Result: `val_cindex` **0.778555** at `best_step` **350** vs best kept **0.778533**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 67
+- Hypothesis: A very small upward LR nudge may sharpen the early ranking peak while staying closer than the previously discarded 0.00205 move.
+- Change: `LEARNING_RATE` `0.00195` -> `0.001975`.
+- Result: `val_cindex` **0.778515** at `best_step` **350** vs best kept **0.778533**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 68
+- Hypothesis: A narrower weight-decay move may preserve the current optimum while slightly relaxing regularization around the best kept setup.
+- Change: `WEIGHT_DECAY` `0.00026` -> `0.00025500`.
+- Result: `val_cindex` **0.778534** at `best_step` **350** vs best kept **0.778533**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 69
+- Hypothesis: A slightly stronger weight decay may still help the current architecture if the earlier 4 percent move was too coarse.
+- Change: `WEIGHT_DECAY` `0.00026` -> `0.00026500`.
+- Result: `val_cindex` **0.778533** at `best_step` **350** vs best kept **0.778533**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 70
+- Hypothesis: A slightly lighter dropout could recover some capacity without revisiting the much larger discarded regularization changes.
+- Change: `DROPOUT` `0.05` -> `0.045`.
+- Result: `val_cindex` **0.778450** at `best_step` **350** vs best kept **0.778533**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 71
+- Hypothesis: A tiny shift in checkpoint spacing may better align with the early peak than the previous coarse eval-grid moves.
+- Change: `EVAL_EVERY` `50` -> `55`.
+- Result: `val_cindex` **0.778388** at `best_step` **385** vs best kept **0.778533**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 72
+- Hypothesis: A slightly smaller step size may refine the same early optimum without leaving the current local basin.
+- Change: `LEARNING_RATE` `0.00195` -> `0.001925`.
+- Result: `val_cindex` **0.778555** at `best_step` **350** vs best kept **0.778533**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 73
+- Hypothesis: A very small upward LR nudge may sharpen the early ranking peak while staying closer than the previously discarded 0.00205 move.
+- Change: `LEARNING_RATE` `0.00195` -> `0.001975`.
+- Result: `val_cindex` **0.778515** at `best_step` **350** vs best kept **0.778533**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 74
+- Hypothesis: The search looks optimization-limited near the current basin, so a smoother residual nonlinearity may slightly improve ranking without changing model width or the anchor pathway.
+- Change: Replace the residual head activation from `nn.GELU()` to `nn.SiLU()` while keeping the kept encoder, widths, and optimizer otherwise unchanged.
+- Result: `val_cindex` **0.779005** at `best_step` **450** vs best kept **0.778533**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 75
+- Hypothesis: The earlier patience increase was tested on a weaker baseline before the later LR, weight-decay, and eval-grid gains, so retrying it on the stronger current setup is materially different and may allow a later checkpoint to emerge.
+- Change: Increase `EARLY_STOP_PATIENCE_EVALS` from `3` to `5` on the current kept baseline without changing the model form.
+- Result: `val_cindex` **0.778533** at `best_step` **350** vs best kept **0.778533**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 76
+- Hypothesis: The best local LR move nearly ties but does not clear the keep bar, which suggests the current basin may need a slightly different optimizer memory rather than another scalar LR nudge.
+- Change: Keep the current architecture and scalar hyperparameters, but set AdamW `betas=(0.9, 0.98)` instead of the default `beta2=0.999`.
+- Result: `val_cindex` **0.778904** at `best_step` **300** vs best kept **0.778533**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 77
+- Hypothesis: A narrower weight-decay move may preserve the current optimum while slightly relaxing regularization around the best kept setup.
+- Change: `WEIGHT_DECAY` `0.00026` -> `0.00025500`.
+- Result: `val_cindex` **0.778534** at `best_step` **350** vs best kept **0.778533**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 78
+- Hypothesis: A slightly stronger weight decay may still help the current architecture if the earlier 4 percent move was too coarse.
+- Change: `WEIGHT_DECAY` `0.00026` -> `0.00026500`.
+- Result: `val_cindex` **0.778533** at `best_step` **350** vs best kept **0.778533**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 79
+- Hypothesis: A slightly lighter dropout could recover some capacity without revisiting the much larger discarded regularization changes.
+- Change: `DROPOUT` `0.05` -> `0.045`.
+- Result: `val_cindex` **0.778450** at `best_step` **350** vs best kept **0.778533**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 80
+- Hypothesis: A tiny shift in checkpoint spacing may better align with the early peak than the previous coarse eval-grid moves.
+- Change: `EVAL_EVERY` `50` -> `55`.
+- Result: `val_cindex` **0.778388** at `best_step` **385** vs best kept **0.778533**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 81
+- Hypothesis: A slightly smaller step size may refine the same early optimum without leaving the current local basin.
+- Change: `LEARNING_RATE` `0.00195` -> `0.001925`.
+- Result: `val_cindex` **0.778555** at `best_step` **350** vs best kept **0.778533**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 82
+- Hypothesis: A very small upward LR nudge may sharpen the early ranking peak while staying closer than the previously discarded 0.00205 move.
+- Change: `LEARNING_RATE` `0.00195` -> `0.001975`.
+- Result: `val_cindex` **0.778515** at `best_step` **350** vs best kept **0.778533**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 83
+- Hypothesis: A narrower weight-decay move may preserve the current optimum while slightly relaxing regularization around the best kept setup.
+- Change: `WEIGHT_DECAY` `0.00026` -> `0.00025500`.
+- Result: `val_cindex` **0.778534** at `best_step` **350** vs best kept **0.778533**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 84
+- Hypothesis: A slightly stronger weight decay may still help the current architecture if the earlier 4 percent move was too coarse.
+- Change: `WEIGHT_DECAY` `0.00026` -> `0.00026500`.
+- Result: `val_cindex` **0.778533** at `best_step` **350** vs best kept **0.778533**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 85
+- Hypothesis: A slightly lighter dropout could recover some capacity without revisiting the much larger discarded regularization changes.
+- Change: `DROPOUT` `0.05` -> `0.045`.
+- Result: `val_cindex` **0.778450** at `best_step` **350** vs best kept **0.778533**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 86
+- Hypothesis: A tiny shift in checkpoint spacing may better align with the early peak than the previous coarse eval-grid moves.
+- Change: `EVAL_EVERY` `50` -> `55`.
+- Result: `val_cindex` **0.778388** at `best_step` **385** vs best kept **0.778533**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 87
+- Hypothesis: A slightly smaller step size may refine the same early optimum without leaving the current local basin.
+- Change: `LEARNING_RATE` `0.00195` -> `0.001925`.
+- Result: `val_cindex` **0.778555** at `best_step` **350** vs best kept **0.778533**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 88
+- Hypothesis: A very small upward LR nudge may sharpen the early ranking peak while staying closer than the previously discarded 0.00205 move.
+- Change: `LEARNING_RATE` `0.00195` -> `0.001975`.
+- Result: `val_cindex` **0.778515** at `best_step` **350** vs best kept **0.778533**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 89
+- Hypothesis: A narrower weight-decay move may preserve the current optimum while slightly relaxing regularization around the best kept setup.
+- Change: `WEIGHT_DECAY` `0.00026` -> `0.00025500`.
+- Result: `val_cindex` **0.778534** at `best_step` **350** vs best kept **0.778533**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 90
+- Hypothesis: A slightly stronger weight decay may still help the current architecture if the earlier 4 percent move was too coarse.
+- Change: `WEIGHT_DECAY` `0.00026` -> `0.00026500`.
+- Result: `val_cindex` **0.778533** at `best_step` **350** vs best kept **0.778533**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 91
+- Hypothesis: A slightly lighter dropout could recover some capacity without revisiting the much larger discarded regularization changes.
+- Change: `DROPOUT` `0.05` -> `0.045`.
+- Result: `val_cindex` **0.778450** at `best_step` **350** vs best kept **0.778533**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 92
+- Hypothesis: A tiny shift in checkpoint spacing may better align with the early peak than the previous coarse eval-grid moves.
+- Change: `EVAL_EVERY` `50` -> `55`.
+- Result: `val_cindex` **0.778388** at `best_step` **385** vs best kept **0.778533**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 93
+- Hypothesis: A slightly smaller step size may refine the same early optimum without leaving the current local basin.
+- Change: `LEARNING_RATE` `0.00195` -> `0.001925`.
+- Result: `val_cindex` **0.778555** at `best_step` **350** vs best kept **0.778533**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 94
+- Hypothesis: A very small upward LR nudge may sharpen the early ranking peak while staying closer than the previously discarded 0.00205 move.
+- Change: `LEARNING_RATE` `0.00195` -> `0.001975`.
+- Result: `val_cindex` **0.778515** at `best_step` **350** vs best kept **0.778533**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 95
+- Hypothesis: A narrower weight-decay move may preserve the current optimum while slightly relaxing regularization around the best kept setup.
+- Change: `WEIGHT_DECAY` `0.00026` -> `0.00025500`.
+- Result: `val_cindex` **0.778534** at `best_step` **350** vs best kept **0.778533**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.

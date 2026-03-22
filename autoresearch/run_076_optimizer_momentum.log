@@ -1,0 +1,121 @@
+Device:            cuda
+Feature count:     9
+Train/val rows:    5988/1498
+Time budget:       300s
+step 00000 | loss: 8.210695 | val_cindex: 0.760723 | best: 0.760723 | remaining: 299.7s
+step 00050 | loss: 8.100966 | val_cindex: 0.766991 | best: 0.766991 | remaining: 299.6s
+step 00100 | loss: 8.021327 | val_cindex: 0.764107 | best: 0.766991 | remaining: 299.4s
+step 00150 | loss: 7.974855 | val_cindex: 0.770378 | best: 0.770378 | remaining: 299.2s
+step 00200 | loss: 7.942970 | val_cindex: 0.775900 | best: 0.775900 | remaining: 299.0s
+step 00250 | loss: 7.934341 | val_cindex: 0.777657 | best: 0.777657 | remaining: 298.8s
+step 00300 | loss: 7.920948 | val_cindex: 0.778904 | best: 0.778904 | remaining: 298.7s
+step 00350 | loss: 7.918735 | val_cindex: 0.778588 | best: 0.778904 | remaining: 298.4s
+step 00400 | loss: 7.919587 | val_cindex: 0.778626 | best: 0.778904 | remaining: 298.2s
+step 00450 | loss: 7.914214 | val_cindex: 0.778966 | best: 0.778904 | remaining: 298.0s
+step 00500 | loss: 7.900037 | val_cindex: 0.778675 | best: 0.778904 | remaining: 297.9s
+step 00550 | loss: 7.904816 | val_cindex: 0.777827 | best: 0.778904 | remaining: 297.7s
+step 00600 | loss: 7.908654 | val_cindex: 0.777149 | best: 0.778904 | remaining: 297.5s
+step 00650 | loss: 7.903810 | val_cindex: 0.776580 | best: 0.778904 | remaining: 297.4s
+step 00700 | loss: 7.899849 | val_cindex: 0.777017 | best: 0.778904 | remaining: 297.2s
+step 00750 | loss: 7.891989 | val_cindex: 0.776333 | best: 0.778904 | remaining: 297.0s
+step 00800 | loss: 7.891680 | val_cindex: 0.777183 | best: 0.778904 | remaining: 296.9s
+step 00850 | loss: 7.895501 | val_cindex: 0.776695 | best: 0.778904 | remaining: 296.6s
+step 00900 | loss: 7.895533 | val_cindex: 0.776556 | best: 0.778904 | remaining: 296.4s
+step 00950 | loss: 7.889394 | val_cindex: 0.776327 | best: 0.778904 | remaining: 296.2s
+step 01000 | loss: 7.892311 | val_cindex: 0.776574 | best: 0.778904 | remaining: 296.1s
+step 01050 | loss: 7.885842 | val_cindex: 0.777337 | best: 0.778904 | remaining: 295.9s
+step 01100 | loss: 7.891338 | val_cindex: 0.777262 | best: 0.778904 | remaining: 295.7s
+step 01150 | loss: 7.886329 | val_cindex: 0.777307 | best: 0.778904 | remaining: 295.6s
+step 01200 | loss: 7.889061 | val_cindex: 0.776942 | best: 0.778904 | remaining: 295.4s
+step 01250 | loss: 7.883232 | val_cindex: 0.777215 | best: 0.778904 | remaining: 295.2s
+step 01300 | loss: 7.877869 | val_cindex: 0.777744 | best: 0.778904 | remaining: 295.0s
+step 01350 | loss: 7.874923 | val_cindex: 0.778051 | best: 0.778904 | remaining: 294.9s
+step 01400 | loss: 7.876418 | val_cindex: 0.777809 | best: 0.778904 | remaining: 294.7s
+step 01450 | loss: 7.874640 | val_cindex: 0.778062 | best: 0.778904 | remaining: 294.5s
+step 01500 | loss: 7.876234 | val_cindex: 0.778549 | best: 0.778904 | remaining: 294.3s
+step 01550 | loss: 7.877741 | val_cindex: 0.777932 | best: 0.778904 | remaining: 294.2s
+step 01600 | loss: 7.873981 | val_cindex: 0.777274 | best: 0.778904 | remaining: 294.0s
+step 01650 | loss: 7.868287 | val_cindex: 0.777296 | best: 0.778904 | remaining: 293.8s
+step 01700 | loss: 7.867464 | val_cindex: 0.777373 | best: 0.778904 | remaining: 293.6s
+step 01750 | loss: 7.866244 | val_cindex: 0.776651 | best: 0.778904 | remaining: 293.4s
+step 01800 | loss: 7.873778 | val_cindex: 0.776412 | best: 0.778904 | remaining: 293.3s
+step 01850 | loss: 7.870941 | val_cindex: 0.775855 | best: 0.778904 | remaining: 293.1s
+step 01900 | loss: 7.872112 | val_cindex: 0.775525 | best: 0.778904 | remaining: 292.9s
+step 01950 | loss: 7.867783 | val_cindex: 0.775687 | best: 0.778904 | remaining: 292.7s
+step 02000 | loss: 7.868186 | val_cindex: 0.775766 | best: 0.778904 | remaining: 292.5s
+step 02050 | loss: 7.874328 | val_cindex: 0.775254 | best: 0.778904 | remaining: 292.3s
+step 02100 | loss: 7.863760 | val_cindex: 0.775044 | best: 0.778904 | remaining: 292.2s
+step 02150 | loss: 7.863751 | val_cindex: 0.774420 | best: 0.778904 | remaining: 292.0s
+step 02200 | loss: 7.861595 | val_cindex: 0.775076 | best: 0.778904 | remaining: 291.8s
+step 02250 | loss: 7.861980 | val_cindex: 0.774902 | best: 0.778904 | remaining: 291.6s
+step 02300 | loss: 7.870785 | val_cindex: 0.775051 | best: 0.778904 | remaining: 291.4s
+step 02350 | loss: 7.859207 | val_cindex: 0.774627 | best: 0.778904 | remaining: 291.2s
+step 02400 | loss: 7.852305 | val_cindex: 0.774734 | best: 0.778904 | remaining: 291.1s
+step 02450 | loss: 7.861892 | val_cindex: 0.774689 | best: 0.778904 | remaining: 290.9s
+step 02500 | loss: 7.864742 | val_cindex: 0.774576 | best: 0.778904 | remaining: 290.7s
+step 02550 | loss: 7.872707 | val_cindex: 0.773653 | best: 0.778904 | remaining: 290.5s
+step 02600 | loss: 7.865477 | val_cindex: 0.775371 | best: 0.778904 | remaining: 290.3s
+step 02650 | loss: 7.858805 | val_cindex: 0.775728 | best: 0.778904 | remaining: 290.2s
+step 02700 | loss: 7.866852 | val_cindex: 0.775596 | best: 0.778904 | remaining: 290.0s
+step 02750 | loss: 7.865306 | val_cindex: 0.774940 | best: 0.778904 | remaining: 289.8s
+step 02800 | loss: 7.855117 | val_cindex: 0.775509 | best: 0.778904 | remaining: 289.6s
+step 02850 | loss: 7.873686 | val_cindex: 0.773955 | best: 0.778904 | remaining: 289.4s
+step 02900 | loss: 7.853936 | val_cindex: 0.776321 | best: 0.778904 | remaining: 289.2s
+step 02950 | loss: 7.859714 | val_cindex: 0.775574 | best: 0.778904 | remaining: 289.0s
+step 03000 | loss: 7.854238 | val_cindex: 0.775633 | best: 0.778904 | remaining: 288.8s
+step 03050 | loss: 7.864284 | val_cindex: 0.775033 | best: 0.778904 | remaining: 288.5s
+step 03100 | loss: 7.855837 | val_cindex: 0.775104 | best: 0.778904 | remaining: 288.3s
+step 03150 | loss: 7.857809 | val_cindex: 0.776058 | best: 0.778904 | remaining: 288.1s
+step 03200 | loss: 7.853350 | val_cindex: 0.775353 | best: 0.778904 | remaining: 287.9s
+step 03250 | loss: 7.864445 | val_cindex: 0.776242 | best: 0.778904 | remaining: 287.7s
+step 03300 | loss: 7.861523 | val_cindex: 0.775396 | best: 0.778904 | remaining: 287.5s
+step 03350 | loss: 7.851257 | val_cindex: 0.774586 | best: 0.778904 | remaining: 287.4s
+step 03400 | loss: 7.855499 | val_cindex: 0.775191 | best: 0.778904 | remaining: 287.2s
+step 03450 | loss: 7.859424 | val_cindex: 0.775517 | best: 0.778904 | remaining: 286.9s
+step 03500 | loss: 7.863223 | val_cindex: 0.775614 | best: 0.778904 | remaining: 286.7s
+step 03550 | loss: 7.858973 | val_cindex: 0.775234 | best: 0.778904 | remaining: 286.5s
+step 03600 | loss: 7.860547 | val_cindex: 0.775210 | best: 0.778904 | remaining: 286.3s
+step 03650 | loss: 7.858731 | val_cindex: 0.775067 | best: 0.778904 | remaining: 286.0s
+step 03700 | loss: 7.849669 | val_cindex: 0.775495 | best: 0.778904 | remaining: 285.8s
+step 03750 | loss: 7.854466 | val_cindex: 0.775406 | best: 0.778904 | remaining: 285.6s
+step 03800 | loss: 7.855858 | val_cindex: 0.774212 | best: 0.778904 | remaining: 285.4s
+step 03850 | loss: 7.862420 | val_cindex: 0.775422 | best: 0.778904 | remaining: 285.2s
+step 03900 | loss: 7.846690 | val_cindex: 0.775325 | best: 0.778904 | remaining: 285.0s
+step 03950 | loss: 7.857300 | val_cindex: 0.774942 | best: 0.778904 | remaining: 284.8s
+step 04000 | loss: 7.857456 | val_cindex: 0.776027 | best: 0.778904 | remaining: 284.6s
+step 04050 | loss: 7.848035 | val_cindex: 0.774562 | best: 0.778904 | remaining: 284.5s
+step 04100 | loss: 7.860560 | val_cindex: 0.774365 | best: 0.778904 | remaining: 284.3s
+step 04150 | loss: 7.855642 | val_cindex: 0.775106 | best: 0.778904 | remaining: 284.1s
+step 04200 | loss: 7.862562 | val_cindex: 0.774647 | best: 0.778904 | remaining: 284.0s
+step 04250 | loss: 7.855436 | val_cindex: 0.775479 | best: 0.778904 | remaining: 283.8s
+step 04300 | loss: 7.848275 | val_cindex: 0.775491 | best: 0.778904 | remaining: 283.6s
+step 04350 | loss: 7.858459 | val_cindex: 0.774216 | best: 0.778904 | remaining: 283.4s
+step 04400 | loss: 7.853589 | val_cindex: 0.775465 | best: 0.778904 | remaining: 283.3s
+step 04450 | loss: 7.850189 | val_cindex: 0.774703 | best: 0.778904 | remaining: 283.1s
+step 04500 | loss: 7.858709 | val_cindex: 0.774933 | best: 0.778904 | remaining: 282.9s
+step 04550 | loss: 7.848225 | val_cindex: 0.774226 | best: 0.778904 | remaining: 282.7s
+step 04600 | loss: 7.856644 | val_cindex: 0.774554 | best: 0.778904 | remaining: 282.5s
+step 04650 | loss: 7.854938 | val_cindex: 0.774835 | best: 0.778904 | remaining: 282.4s
+step 04700 | loss: 7.860866 | val_cindex: 0.775282 | best: 0.778904 | remaining: 282.2s
+step 04750 | loss: 7.845426 | val_cindex: 0.775050 | best: 0.778904 | remaining: 282.0s
+step 04800 | loss: 7.847833 | val_cindex: 0.775906 | best: 0.778904 | remaining: 281.8s
+step 04850 | loss: 7.850045 | val_cindex: 0.774467 | best: 0.778904 | remaining: 281.6s
+step 04900 | loss: 7.850373 | val_cindex: 0.775627 | best: 0.778904 | remaining: 281.4s
+step 04950 | loss: 7.844096 | val_cindex: 0.775315 | best: 0.778904 | remaining: 281.3s
+step 05000 | loss: 7.853255 | val_cindex: 0.775352 | best: 0.778904 | remaining: 281.1s
+step 05050 | loss: 7.849360 | val_cindex: 0.774424 | best: 0.778904 | remaining: 280.9s
+step 05100 | loss: 7.844382 | val_cindex: 0.774936 | best: 0.778904 | remaining: 280.7s
+step 05150 | loss: 7.839989 | val_cindex: 0.774890 | best: 0.778904 | remaining: 280.5s
+step 05200 | loss: 7.849478 | val_cindex: 0.774365 | best: 0.778904 | remaining: 280.3s
+step 05250 | loss: 7.845001 | val_cindex: 0.773200 | best: 0.778904 | remaining: 280.1s
+step 05300 | loss: 7.849610 | val_cindex: 0.773444 | best: 0.778904 | remaining: 280.0s
+---
+val_cindex:       0.778904
+training_seconds: 20.0
+total_seconds:    104.2
+peak_vram_mb:     19.5
+num_steps:        5300
+num_params:       291
+best_step:        300
+stop_reason:      early_stop
+artifact_path:    C:\Users\user\Desktop\PhenoAge2\autoresearch\candidate_pa2.pt
