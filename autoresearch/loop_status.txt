@@ -3,10 +3,10 @@ supervisor_pid: 80516
 started_at_epoch: 1774136462.9348943
 phase: explore
 best_kept_val_cindex: 0.779707
-plateau_streak: 8
-consecutive_discards: 8
-completed_runs: 97
+plateau_streak: 9
+consecutive_discards: 9
+completed_runs: 98
 pending_description: Feature gate on standardized encoder on single-hidden baseline
 pending_family: feature_gate_current
 pending_pid: 0
-note: Finished raw run: Feature gate on standardized encoder on single-hidden baseline
+note: Supervisor failed; see loop_stop_report.txt.
