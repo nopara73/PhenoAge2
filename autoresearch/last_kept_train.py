@@ -138,6 +138,8 @@ class RiskMLP(nn.Module):
         self.residual_head = nn.Sequential(*layers)
         self.base_weight = nn.Parameter(torch.tensor(1.0, dtype=torch.float32))
         self.residual_scale = nn.Parameter(torch.tensor(0.1, dtype=torch.float32))
+        self.linear_scale = nn.Parameter(torch.tensor(0.05, dtype=torch.float32))
+        self.linear_skip = nn.Linear(input_dim, 1)
 
     def set_standardizer(self, mean: torch.Tensor, std: torch.Tensor) -> None:
         self.feature_mean.copy_(mean)
@@ -148,7 +150,8 @@ class RiskMLP(nn.Module):
         base_score = encoded[:, 9]
         standardized = (encoded - self.feature_mean) / self.feature_std
         residual = self.residual_head(standardized).squeeze(-1)
-        return self.base_weight * base_score + self.residual_scale * residual
+        linear_skip = self.linear_skip(standardized).squeeze(-1)
+        return self.base_weight * base_score + self.residual_scale * residual + self.linear_scale * linear_skip
 
 
 def cox_partial_loss(risk_scores: torch.Tensor, times: torch.Tensor, events: torch.Tensor) -> torch.Tensor:

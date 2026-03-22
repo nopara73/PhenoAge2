@@ -1,12 +1,12 @@
-updated_at: 2026-03-22 02:16:54
-supervisor_pid: 78740
+updated_at: 2026-03-22 07:39:35
+supervisor_pid: 80516
 started_at_epoch: 1774136462.9348943
-phase: local
-best_kept_val_cindex: 0.778533
-plateau_streak: 30
-consecutive_discards: 30
-completed_runs: 86
-pending_description: none
-pending_family: none
+phase: explore
+best_kept_val_cindex: 0.779707
+plateau_streak: 8
+consecutive_discards: 8
+completed_runs: 97
+pending_description: Feature gate on standardized encoder on single-hidden baseline
+pending_family: feature_gate_current
 pending_pid: 0
-note: stop: 30 consecutive discarded runs with no meaningful improvement and no fresh exploration families remaining. Best kept val_cindex=0.778533.
+note: Finished raw run: Feature gate on standardized encoder on single-hidden baseline

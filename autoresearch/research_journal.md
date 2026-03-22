@@ -777,3 +777,115 @@ Rules:
 - Decision: **discard**; restored `train.py` from `last_kept_train.py`.
 - Learning: This change did not improve the kept baseline enough to justify replacing it.
 - Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 96
+- Hypothesis: The earlier SiLU run was the best overall discard and was tested before the winning switch to a shallower residual head, so re-running SiLU on the stronger current baseline is a materially different retry with real upside.
+- Change: Replace the residual activation from `nn.GELU()` to `nn.SiLU()` on top of the kept single-hidden residual MLP baseline.
+- Result: `val_cindex` **0.779005** at `best_step` **450** vs best kept **0.778533**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 97
+- Hypothesis: The earlier feature-expansion attempt was paired with a worse residual architecture, so retrying a richer interaction set on the stronger single-hidden baseline could recover signal that the deeper head previously overfit.
+- Change: Add five extra biomarker interactions to the encoder while keeping the current single-hidden residual head and optimizer unchanged.
+- Result: `val_cindex` **0.777031** at `best_step` **1400** vs best kept **0.778533**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 98
+- Hypothesis: The single-hidden residual head may still be too nonlinear for some stable ranking signal, so adding a small direct linear correction path could capture simple coefficient adjustments that the nonlinear branch misses.
+- Change: Add a learned linear skip correction on standardized encoded features alongside the current single-hidden residual head.
+- Result: `val_cindex` **0.779707** at `best_step` **1700** vs best kept **0.778533**.
+- Decision: **keep**
+- Learning: This broader change improved enough to replace the kept baseline.
+- Next: Resume local tuning around the new kept baseline.
+
+## Run 99
+- Hypothesis: A slightly smaller step size may refine the same early optimum without leaving the current local basin.
+- Change: `LEARNING_RATE` `0.00195` -> `0.001925`.
+- Result: `val_cindex` **0.779254** at `best_step` **800** vs best kept **0.779707**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 100
+- Hypothesis: A very small upward LR nudge may sharpen the early ranking peak while staying closer than the previously discarded 0.00205 move.
+- Change: `LEARNING_RATE` `0.00195` -> `0.001975`.
+- Result: `val_cindex` **0.779756** at `best_step` **1700** vs best kept **0.779707**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 101
+- Hypothesis: A narrower weight-decay move may preserve the current optimum while slightly relaxing regularization around the best kept setup.
+- Change: `WEIGHT_DECAY` `0.00026` -> `0.00025500`.
+- Result: crash / no completed summary block in `run.log`
+- Decision: **crash**; restored `train.py` from `last_kept_train.py`.
+- Learning: The candidate did not finish cleanly, so it cannot be compared against the kept baseline.
+- Next: Continue from the kept baseline with the next queued experiment.
+
+## Run 102
+- Hypothesis: A slightly stronger weight decay may still help the current architecture if the earlier 4 percent move was too coarse.
+- Change: `WEIGHT_DECAY` `0.00026` -> `0.00026500`.
+- Result: `val_cindex` **0.779707** at `best_step` **1700** vs best kept **0.779707**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 103
+- Hypothesis: A slightly lighter dropout could recover some capacity without revisiting the much larger discarded regularization changes.
+- Change: `DROPOUT` `0.05` -> `0.045`.
+- Result: crash / no completed summary block in `run.log`
+- Decision: **crash**; restored `train.py` from `last_kept_train.py`.
+- Learning: The candidate did not finish cleanly, so it cannot be compared against the kept baseline.
+- Next: Continue from the kept baseline with the next queued experiment.
+
+## Run 104
+- Hypothesis: A tiny shift in checkpoint spacing may better align with the early peak than the previous coarse eval-grid moves.
+- Change: `EVAL_EVERY` `50` -> `55`.
+- Result: `val_cindex` **0.779610** at `best_step` **1705** vs best kept **0.779707**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 105
+- Hypothesis: The current model may be overfitting by re-scaling the pheno-no-age anchor itself, so forcing the anchor weight to stay fixed could let the residual branch learn cleaner corrections.
+- Change: Replace the learned `base_weight` with a fixed weight of `1.0`, keeping the current single-hidden residual correction path unchanged.
+- Result: `val_cindex` **0.778930** at `best_step` **1450** vs best kept **0.779707**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 106
+- Hypothesis: The model may now be limited by the mismatch between Cox optimization and the exact ranking target, so adding a smooth pairwise concordance surrogate could improve discrimination more meaningfully than another scalar hyperparameter tweak.
+- Change: Keep the current single-hidden residual architecture, but optimize a hybrid loss: Cox partial likelihood plus a small pairwise ranking surrogate over comparable event-survival pairs.
+- Result: crash / no completed summary block in `run.log`
+- Decision: **crash**; restored `train.py` from `last_kept_train.py`.
+- Learning: The candidate did not finish cleanly, so it cannot be compared against the kept baseline.
+- Next: Continue from the kept baseline with the next queued experiment.
+
+## Run 107
+- Hypothesis: The current winner may still be overfitting stable quirks of the training split, so a small amount of noise on standardized encoded features during training could improve robustness without changing the inference-time formula.
+- Change: Add small Gaussian noise to standardized encoded features during training while keeping the current single-hidden residual architecture and optimizer unchanged.
+- Result: `val_cindex` **0.779118** at `best_step` **2050** vs best kept **0.779707**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 108
+- Hypothesis: The current winner may be trapped by deterministic full-batch optimization, so revisiting mini-batch Cox on the stronger single-hidden baseline could unlock a different basin than the earlier weaker-architecture attempt.
+- Change: Train the current single-hidden residual model with mini-batch Cox updates (`batch_size=1024`) and cosine learning-rate decay instead of the current full-batch constant-LR regime.
+- Result: `val_cindex` **0.778240** at `best_step` **250** vs best kept **0.779707**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 109
+- Hypothesis: The previous hybrid Cox plus pairwise attempt likely failed because the naive all-pairs construction was too memory-heavy, so retrying it with sampled comparable pairs is still a meaningfully different loss-design probe with real upside.
+- Change: Keep the current single-hidden residual architecture, but optimize a hybrid loss: Cox partial likelihood plus a sampled pairwise ranking surrogate over comparable event-survival pairs.
+- Result: `val_cindex` **0.778155** at `best_step` **350** vs best kept **0.779707**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and move to the next queued conceptual probe.

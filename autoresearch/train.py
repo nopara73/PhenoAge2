@@ -138,6 +138,9 @@ class RiskMLP(nn.Module):
         self.residual_head = nn.Sequential(*layers)
         self.base_weight = nn.Parameter(torch.tensor(1.0, dtype=torch.float32))
         self.residual_scale = nn.Parameter(torch.tensor(0.1, dtype=torch.float32))
+        self.linear_scale = nn.Parameter(torch.tensor(0.05, dtype=torch.float32))
+        self.linear_skip = nn.Linear(input_dim, 1)
+        self.feature_gate = nn.Parameter(torch.zeros(input_dim, dtype=torch.float32))
 
     def set_standardizer(self, mean: torch.Tensor, std: torch.Tensor) -> None:
         self.feature_mean.copy_(mean)
@@ -147,8 +150,10 @@ class RiskMLP(nn.Module):
         encoded = self.encoder(x)
         base_score = encoded[:, 9]
         standardized = (encoded - self.feature_mean) / self.feature_std
-        residual = self.residual_head(standardized).squeeze(-1)
-        return self.base_weight * base_score + self.residual_scale * residual
+        gated = standardized * torch.sigmoid(self.feature_gate)
+        residual = self.residual_head(gated).squeeze(-1)
+        linear_skip = self.linear_skip(gated).squeeze(-1)
+        return self.base_weight * base_score + self.residual_scale * residual + self.linear_scale * linear_skip
 
 
 def cox_partial_loss(risk_scores: torch.Tensor, times: torch.Tensor, events: torch.Tensor) -> torch.Tensor:
@@ -298,3 +303,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+# supervisor_retry_tag: feature_gate_current

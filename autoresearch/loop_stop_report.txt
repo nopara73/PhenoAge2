@@ -1,1 +1,1 @@
-stop: 30 consecutive discarded runs with no meaningful improvement and no fresh exploration families remaining. Best kept val_cindex=0.778533.
+stop: no fresh experiments remain for the current kept baseline. Best kept val_cindex=0.779707.

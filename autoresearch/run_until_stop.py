@@ -34,7 +34,8 @@ STOP_REPORT = HERE / "loop_stop_report.txt"
 MAX_SECONDS = 10 * 3600
 MAX_RUNS = 10_000
 MAX_CONSECUTIVE_DISCARDS = 30
-MAX_EXPLORATION_BURST = 3
+MAX_EXPLORATION_BURST = 6
+MAX_LOCAL_DISCARDS_BEFORE_EXPLORATION = 2
 MEANINGFUL_IMPROVEMENT = 0.0005
 SIMILARITY_TOLERANCE = 0.00005
 RUN_POLL_SECONDS = 5.0
@@ -117,6 +118,14 @@ def load_results_rows() -> list[dict[str, str]]:
         return list(reader)
 
 
+def is_local_description(description: str) -> bool:
+    normalized = description.strip()
+    if normalized.startswith("crash: "):
+        normalized = normalized[7:]
+    prefixes = ("LEARNING_RATE ", "WEIGHT_DECAY ", "DROPOUT ", "EVAL_EVERY ")
+    return normalized.startswith(prefixes)
+
+
 def compute_history(rows: list[dict[str, str]]) -> dict[str, Any]:
     best_keep = 0.0
     consecutive_discards = 0
@@ -144,6 +153,17 @@ def compute_history(rows: list[dict[str, str]]) -> dict[str, Any]:
         "completed_runs": completed_runs,
         "total_rows": len(rows),
     }
+
+
+def compute_local_discards_since_last_keep(rows: list[dict[str, str]]) -> int:
+    count = 0
+    for row in reversed(rows):
+        status = row.get("status", "")
+        if status == "keep":
+            break
+        if status in {"discard", "crash"} and is_local_description(row.get("description", "")):
+            count += 1
+    return count
 
 
 def next_run_number() -> int:
@@ -482,15 +502,236 @@ def make_lower_beta2_text(base_text: str) -> str:
     )
 
 
+def make_expanded_encoder_retry_text(base_text: str) -> str:
+    text = replace_once(base_text, "        self.output_dim = 16", "        self.output_dim = 21", "expanded_encoder_output_dim")
+    old = """        return torch.stack(
+            (
+                amp,
+                cep,
+                sgp,
+                log_crp,
+                lymph,
+                mcv,
+                rdw,
+                alk,
+                wbc,
+                pheno_no_age_xb,
+                amp * rdw,
+                sgp * log_crp,
+                wbc * log_crp,
+                lymph * rdw,
+                alk * rdw,
+                cep * log_crp,
+            ),
+            dim=1,
+        )
+"""
+    new = """        return torch.stack(
+            (
+                amp,
+                cep,
+                sgp,
+                log_crp,
+                lymph,
+                mcv,
+                rdw,
+                alk,
+                wbc,
+                pheno_no_age_xb,
+                amp * rdw,
+                sgp * log_crp,
+                wbc * log_crp,
+                lymph * rdw,
+                alk * rdw,
+                cep * log_crp,
+                amp * log_crp,
+                sgp * rdw,
+                alk * log_crp,
+                sgp / amp.clamp_min(1e-6),
+                torch.log1p(alk.clamp_min(0.0)),
+            ),
+            dim=1,
+        )
+"""
+    return replace_once(text, old, new, "expanded_encoder_retry")
+
+
+def make_linear_skip_correction_text(base_text: str) -> str:
+    text = replace_once(
+        base_text,
+        '        self.residual_scale = nn.Parameter(torch.tensor(0.1, dtype=torch.float32))',
+        '        self.residual_scale = nn.Parameter(torch.tensor(0.1, dtype=torch.float32))\n        self.linear_scale = nn.Parameter(torch.tensor(0.05, dtype=torch.float32))\n        self.linear_skip = nn.Linear(input_dim, 1)',
+        "linear_skip_parameters",
+    )
+    return replace_once(
+        text,
+        "        return self.base_weight * base_score + self.residual_scale * residual",
+        "        linear_skip = self.linear_skip(standardized).squeeze(-1)\n        return self.base_weight * base_score + self.residual_scale * residual + self.linear_scale * linear_skip",
+        "linear_skip_forward",
+    )
+
+
+def make_fixed_anchor_weight_text(base_text: str) -> str:
+    text = replace_once(
+        base_text,
+        '        self.base_weight = nn.Parameter(torch.tensor(1.0, dtype=torch.float32))',
+        '        self.register_buffer("base_weight", torch.tensor(1.0, dtype=torch.float32))',
+        "fixed_anchor_weight",
+    )
+    return replace_once(
+        text,
+        "        return self.base_weight * base_score + self.residual_scale * residual",
+        "        return base_score + self.residual_scale * residual",
+        "fixed_anchor_forward",
+    )
+
+
+def make_hybrid_pairwise_loss_text(base_text: str) -> str:
+    text = replace_once(
+        base_text,
+        """def cox_partial_loss(risk_scores: torch.Tensor, times: torch.Tensor, events: torch.Tensor) -> torch.Tensor:
+    order = torch.argsort(times, descending=True)
+    ordered_scores = risk_scores[order]
+    ordered_events = events[order]
+    log_risk = torch.logcumsumexp(ordered_scores, dim=0)
+    event_count = ordered_events.sum().clamp_min(1.0)
+    losses = -(ordered_scores - log_risk) * ordered_events
+    return losses.sum() / event_count
+""",
+        """def cox_partial_loss(risk_scores: torch.Tensor, times: torch.Tensor, events: torch.Tensor) -> torch.Tensor:
+    order = torch.argsort(times, descending=True)
+    ordered_scores = risk_scores[order]
+    ordered_events = events[order]
+    log_risk = torch.logcumsumexp(ordered_scores, dim=0)
+    event_count = ordered_events.sum().clamp_min(1.0)
+    losses = -(ordered_scores - log_risk) * ordered_events
+    return losses.sum() / event_count
+
+
+def pairwise_ranking_loss(risk_scores: torch.Tensor, times: torch.Tensor, events: torch.Tensor) -> torch.Tensor:
+    event_idx = torch.nonzero(events > 0, as_tuple=False).squeeze(1)
+    if event_idx.numel() == 0:
+        return risk_scores.new_tensor(0.0)
+    if event_idx.numel() > 256:
+        perm = torch.randperm(event_idx.numel(), device=event_idx.device)
+        event_idx = event_idx.index_select(0, perm[:256])
+    pair_losses: list[torch.Tensor] = []
+    for idx in event_idx:
+        later_idx = torch.nonzero(times > times[idx], as_tuple=False).squeeze(1)
+        if later_idx.numel() == 0:
+            continue
+        if later_idx.numel() > 256:
+            perm = torch.randperm(later_idx.numel(), device=later_idx.device)
+            later_idx = later_idx.index_select(0, perm[:256])
+        score_diff = risk_scores[idx] - risk_scores.index_select(0, later_idx)
+        pair_losses.append(torch.nn.functional.softplus(-score_diff).mean())
+    if not pair_losses:
+        return risk_scores.new_tensor(0.0)
+    return torch.stack(pair_losses).mean()
+""",
+        "hybrid_pairwise_loss_block",
+    )
+    return replace_once(
+        text,
+        "        loss = cox_partial_loss(risk_scores, train_times, train_events)",
+        "        loss = cox_partial_loss(risk_scores, train_times, train_events) + 0.2 * pairwise_ranking_loss(risk_scores, train_times, train_events)",
+        "hybrid_pairwise_loss_train_step",
+    )
+
+
+def make_feature_noise_text(base_text: str) -> str:
+    return replace_once(
+        base_text,
+        "        standardized = (encoded - self.feature_mean) / self.feature_std",
+        "        standardized = (encoded - self.feature_mean) / self.feature_std\n        if self.training:\n            standardized = standardized + 0.03 * torch.randn_like(standardized)",
+        "feature_noise_regularization",
+    )
+
+
+def make_feature_gate_text(base_text: str) -> str:
+    text = replace_once(
+        base_text,
+        '        self.linear_scale = nn.Parameter(torch.tensor(0.05, dtype=torch.float32))\n        self.linear_skip = nn.Linear(input_dim, 1)',
+        '        self.linear_scale = nn.Parameter(torch.tensor(0.05, dtype=torch.float32))\n        self.linear_skip = nn.Linear(input_dim, 1)\n        self.feature_gate = nn.Parameter(torch.zeros(input_dim, dtype=torch.float32))',
+        "feature_gate_parameters",
+    )
+    text = replace_once(
+        text,
+        "        standardized = (encoded - self.feature_mean) / self.feature_std",
+        "        standardized = (encoded - self.feature_mean) / self.feature_std\n        gated = standardized * torch.sigmoid(self.feature_gate)",
+        "feature_gate_forward_standardized",
+    )
+    text = replace_once(
+        text,
+        "        residual = self.residual_head(standardized).squeeze(-1)\n        linear_skip = self.linear_skip(standardized).squeeze(-1)",
+        "        residual = self.residual_head(gated).squeeze(-1)\n        linear_skip = self.linear_skip(gated).squeeze(-1)",
+        "feature_gate_forward_paths",
+    )
+    return add_retry_tag(text, "feature_gate_current")
+
+
+def make_quadratic_skip_text(base_text: str) -> str:
+    text = replace_once(
+        base_text,
+        '        self.linear_scale = nn.Parameter(torch.tensor(0.05, dtype=torch.float32))\n        self.linear_skip = nn.Linear(input_dim, 1)',
+        '        self.linear_scale = nn.Parameter(torch.tensor(0.05, dtype=torch.float32))\n        self.linear_skip = nn.Linear(input_dim, 1)\n        self.quadratic_scale = nn.Parameter(torch.tensor(0.02, dtype=torch.float32))\n        self.quadratic_skip = nn.Linear(input_dim, 1, bias=False)',
+        "quadratic_skip_parameters",
+    )
+    return replace_once(
+        text,
+        "        linear_skip = self.linear_skip(standardized).squeeze(-1)\n        return self.base_weight * base_score + self.residual_scale * residual + self.linear_scale * linear_skip",
+        "        linear_skip = self.linear_skip(standardized).squeeze(-1)\n        quadratic_skip = self.quadratic_skip(standardized.square()).squeeze(-1)\n        return self.base_weight * base_score + self.residual_scale * residual + self.linear_scale * linear_skip + self.quadratic_scale * quadratic_skip",
+        "quadratic_skip_forward",
+    )
+
+
+def make_minibatch_cosine_retry_text(base_text: str) -> str:
+    text = replace_once(
+        base_text,
+        '    optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)\n',
+        '    optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)\n    batch_size = min(1024, len(train_rows))\n    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=64, eta_min=LEARNING_RATE * 0.35)\n',
+        "minibatch_cosine_setup",
+    )
+    return replace_once(
+        text,
+        """        model.train()
+        optimizer.zero_grad(set_to_none=True)
+        risk_scores = model(train_x)
+        loss = cox_partial_loss(risk_scores, train_times, train_events)
+        loss.backward()
+        optimizer.step()
+""",
+        """        model.train()
+        batch_perm = torch.randperm(len(train_rows), device=device)
+        batch_losses: list[torch.Tensor] = []
+        for start in range(0, len(train_rows), batch_size):
+            batch_idx = batch_perm[start : start + batch_size]
+            optimizer.zero_grad(set_to_none=True)
+            risk_scores = model(train_x.index_select(0, batch_idx))
+            batch_times = train_times.index_select(0, batch_idx)
+            batch_events = train_events.index_select(0, batch_idx)
+            loss = cox_partial_loss(risk_scores, batch_times, batch_events)
+            loss.backward()
+            optimizer.step()
+            scheduler.step()
+            batch_losses.append(loss.detach())
+        loss = torch.stack(batch_losses).mean()
+""",
+        "minibatch_cosine_train_step",
+    )
+
+
 def build_exploration_queue(base_text: str, history_text: str) -> list[dict[str, Any]]:
     lower = history_text.lower()
     queue: list[dict[str, Any]] = []
     weighted_cox_crashed = "crash: time-weighted cox loss to emphasize earlier aging deaths" in lower
     lean_encoder_crashed = "crash: lean encoder with raw biomarkers plus pheno_no_age_xb only" in lower
     linear_head_crashed = "crash: single linear residual head instead of hidden mlp" in lower
+    hybrid_pairwise_crashed = "crash: hybrid cox + pairwise ranking loss on single-hidden baseline" in lower
     weighted_cox_retried = "retry time-weighted cox loss after supervisor fix" in lower
     lean_encoder_retried = "retry lean encoder after supervisor fix" in lower
     linear_head_retried = "retry single linear residual head after supervisor fix" in lower
+    hybrid_pairwise_retried = "retry hybrid cox + sampled pairwise ranking loss after memory fix" in lower
 
     if weighted_cox_crashed and not weighted_cox_retried:
         queue.append(
@@ -645,6 +886,118 @@ def build_exploration_queue(base_text: str, history_text: str) -> list[dict[str,
                 patch_fn=make_lower_beta2_text,
             )
         )
+    if "single-hidden residual head gelu -> silu" not in lower:
+        queue.append(
+            exploration_experiment(
+                base_text,
+                family="activation_family_retry_current",
+                description="Single-hidden residual head GELU -> SiLU",
+                hypothesis="The earlier SiLU run was the best overall discard and was tested before the winning switch to a shallower residual head, so re-running SiLU on the stronger current baseline is a materially different retry with real upside.",
+                change="Replace the residual activation from `nn.GELU()` to `nn.SiLU()` on top of the kept single-hidden residual MLP baseline.",
+                patch_fn=make_silu_residual_text,
+            )
+        )
+    if "expanded encoder retry on single-hidden baseline" not in lower:
+        queue.append(
+            exploration_experiment(
+                base_text,
+                family="feature_expansion_retry_current",
+                description="Expanded encoder retry on single-hidden baseline",
+                hypothesis="The earlier feature-expansion attempt was paired with a worse residual architecture, so retrying a richer interaction set on the stronger single-hidden baseline could recover signal that the deeper head previously overfit.",
+                change="Add five extra biomarker interactions to the encoder while keeping the current single-hidden residual head and optimizer unchanged.",
+                patch_fn=make_expanded_encoder_retry_text,
+            )
+        )
+    if "linear skip correction on single-hidden baseline" not in lower:
+        queue.append(
+            exploration_experiment(
+                base_text,
+                family="linear_skip_current",
+                description="Linear skip correction on single-hidden baseline",
+                hypothesis="The single-hidden residual head may still be too nonlinear for some stable ranking signal, so adding a small direct linear correction path could capture simple coefficient adjustments that the nonlinear branch misses.",
+                change="Add a learned linear skip correction on standardized encoded features alongside the current single-hidden residual head.",
+                patch_fn=make_linear_skip_correction_text,
+            )
+        )
+    if "fix base anchor weight at 1.0 on single-hidden baseline" not in lower:
+        queue.append(
+            exploration_experiment(
+                base_text,
+                family="anchor_lock_current",
+                description="Fix base anchor weight at 1.0 on single-hidden baseline",
+                hypothesis="The current model may be overfitting by re-scaling the pheno-no-age anchor itself, so forcing the anchor weight to stay fixed could let the residual branch learn cleaner corrections.",
+                change="Replace the learned `base_weight` with a fixed weight of `1.0`, keeping the current single-hidden residual correction path unchanged.",
+                patch_fn=make_fixed_anchor_weight_text,
+                prefer_simpler_on_tie=True,
+            )
+        )
+    if hybrid_pairwise_crashed and not hybrid_pairwise_retried:
+        queue.append(
+            exploration_experiment(
+                base_text,
+                family="loss_design_pairwise_retry_current",
+                description="Retry hybrid Cox + sampled pairwise ranking loss after memory fix",
+                hypothesis="The previous hybrid Cox plus pairwise attempt likely failed because the naive all-pairs construction was too memory-heavy, so retrying it with sampled comparable pairs is still a meaningfully different loss-design probe with real upside.",
+                change="Keep the current single-hidden residual architecture, but optimize a hybrid loss: Cox partial likelihood plus a sampled pairwise ranking surrogate over comparable event-survival pairs.",
+                patch_fn=make_hybrid_pairwise_loss_text,
+                retry_tag="retry_hybrid_pairwise_after_memory_fix",
+            )
+        )
+    elif "hybrid cox + pairwise ranking loss on single-hidden baseline" not in lower:
+        queue.append(
+            exploration_experiment(
+                base_text,
+                family="loss_design_pairwise_current",
+                description="Hybrid Cox + pairwise ranking loss on single-hidden baseline",
+                hypothesis="The model may now be limited by the mismatch between Cox optimization and the exact ranking target, so adding a smooth pairwise concordance surrogate could improve discrimination more meaningfully than another scalar hyperparameter tweak.",
+                change="Keep the current single-hidden residual architecture, but optimize a hybrid loss: Cox partial likelihood plus a small pairwise ranking surrogate over comparable event-survival pairs.",
+                patch_fn=make_hybrid_pairwise_loss_text,
+            )
+        )
+    if "encoded feature noise regularization on single-hidden baseline" not in lower:
+        queue.append(
+            exploration_experiment(
+                base_text,
+                family="regularization_noise_current",
+                description="Encoded feature noise regularization on single-hidden baseline",
+                hypothesis="The current winner may still be overfitting stable quirks of the training split, so a small amount of noise on standardized encoded features during training could improve robustness without changing the inference-time formula.",
+                change="Add small Gaussian noise to standardized encoded features during training while keeping the current single-hidden residual architecture and optimizer unchanged.",
+                patch_fn=make_feature_noise_text,
+            )
+        )
+    if "feature gate on standardized encoder on single-hidden baseline" not in lower:
+        queue.append(
+            exploration_experiment(
+                base_text,
+                family="feature_gate_current",
+                description="Feature gate on standardized encoder on single-hidden baseline",
+                hypothesis="The current model treats every encoded biomarker channel as equally available to the correction paths, so a learned per-feature gate may suppress noisy corrections and focus capacity on the most stable encoded signals.",
+                change="Add a learned sigmoid feature gate on standardized encoded features before both the residual MLP and the linear skip path.",
+                patch_fn=make_feature_gate_text,
+            )
+        )
+    if "quadratic skip correction on single-hidden baseline" not in lower:
+        queue.append(
+            exploration_experiment(
+                base_text,
+                family="quadratic_skip_current",
+                description="Quadratic skip correction on single-hidden baseline",
+                hypothesis="The remaining error may come from simple curvature in the encoded biomarker space, so adding a lightweight quadratic skip path could capture second-order corrections without needing a much larger residual network.",
+                change="Add a small quadratic skip correction on squared standardized encoded features alongside the current linear skip and residual paths.",
+                patch_fn=make_quadratic_skip_text,
+            )
+        )
+    if "mini-batch cox with cosine decay on single-hidden baseline" not in lower:
+        queue.append(
+            exploration_experiment(
+                base_text,
+                family="training_regime_minibatch_current",
+                description="Mini-batch Cox with cosine decay on single-hidden baseline",
+                hypothesis="The current winner may be trapped by deterministic full-batch optimization, so revisiting mini-batch Cox on the stronger single-hidden baseline could unlock a different basin than the earlier weaker-architecture attempt.",
+                change="Train the current single-hidden residual model with mini-batch Cox updates (`batch_size=1024`) and cosine learning-rate decay instead of the current full-batch constant-LR regime.",
+                patch_fn=make_minibatch_cosine_retry_text,
+            )
+        )
     return queue
 
 
@@ -652,6 +1005,7 @@ def choose_next_experiment(state: dict[str, Any], history: dict[str, Any], base_
     attempted = set(state.get("attempted_hashes", []))
     phase = state.get("phase", "local")
     queued = state.get("exploration_queue", [])
+    local_discards_since_keep = int(state.get("local_discards_since_keep", 0))
 
     if phase == "explore" and queued:
         remaining = [item for item in queued if item["train_hash"] not in attempted]
@@ -659,7 +1013,7 @@ def choose_next_experiment(state: dict[str, Any], history: dict[str, Any], base_
         if remaining:
             return remaining[0]
 
-    if history["plateau_streak"] >= 8:
+    if history["plateau_streak"] >= 8 or local_discards_since_keep >= MAX_LOCAL_DISCARDS_BEFORE_EXPLORATION:
         queue = build_exploration_queue(base_text, history_text)
         remaining = [item for item in queue if item["train_hash"] not in attempted]
         if remaining:
@@ -675,11 +1029,7 @@ def choose_next_experiment(state: dict[str, Any], history: dict[str, Any], base_
     if remaining_local:
         return remaining_local[0]
 
-    state["attempted_hashes"] = []
-    refreshed = build_local_queue(base_text)
-    if not refreshed:
-        raise RuntimeError("empty local queue from current kept baseline")
-    return refreshed[0]
+    raise RuntimeError("no fresh experiments remain for the current kept baseline")
 
 
 def archive_run_log(pending: dict[str, Any]) -> None:
@@ -774,6 +1124,9 @@ def reconcile_pending_run(state: dict[str, Any]) -> bool:
             state["phase"] = "local"
             state["exploration_queue"] = []
             state["attempted_hashes"] = [file_hash(read_text(KEPT))]
+            state["local_discards_since_keep"] = 0
+        elif pending.get("kind") == "local":
+            state["local_discards_since_keep"] = int(state.get("local_discards_since_keep", 0)) + 1
         PENDING.unlink(missing_ok=True)
         update_status_file(state, compute_history(load_results_rows()), f"Reconciled completed run: {pending['description']}")
         return True
@@ -801,6 +1154,8 @@ def reconcile_pending_run(state: dict[str, Any]) -> bool:
     state.setdefault("attempted_hashes", [])
     if pending["train_hash"] not in state["attempted_hashes"]:
         state["attempted_hashes"].append(pending["train_hash"])
+    if pending.get("kind") == "local":
+        state["local_discards_since_keep"] = int(state.get("local_discards_since_keep", 0)) + 1
     PENDING.unlink(missing_ok=True)
     update_status_file(state, compute_history(load_results_rows()), f"Reconciled crashed run: {pending['description']}")
     return True
@@ -875,6 +1230,7 @@ def initialize_state() -> dict[str, Any]:
     default = {
         "attempted_hashes": [],
         "exploration_queue": [],
+        "local_discards_since_keep": 0,
         "phase": "local",
         "started_at_epoch": time.time(),
         "supervisor_pid": 0,
@@ -882,6 +1238,7 @@ def initialize_state() -> dict[str, Any]:
     state = load_json(STATE, default)
     state.setdefault("attempted_hashes", [])
     state.setdefault("exploration_queue", [])
+    state.setdefault("local_discards_since_keep", 0)
     state.setdefault("phase", "local")
     state.setdefault("started_at_epoch", time.time())
     state["supervisor_pid"] = os.getpid()
@@ -913,7 +1270,12 @@ def main() -> int:
         update_status_file(state, history, "Supervisor started.")
 
         while True:
-            history = compute_history(load_results_rows())
+            rows = load_results_rows()
+            history = compute_history(rows)
+            state["local_discards_since_keep"] = max(
+                int(state.get("local_discards_since_keep", 0)),
+                compute_local_discards_since_last_keep(rows),
+            )
             elapsed = time.time() - float(state.get("started_at_epoch", time.time()))
             if elapsed >= MAX_SECONDS:
                 msg = (
@@ -936,7 +1298,13 @@ def main() -> int:
 
             summarize_results()
             journal_text = read_text(JOURNAL) if JOURNAL.exists() else ""
-            results_descriptions = "\n".join(row.get("description", "") for row in load_results_rows())
+            rows = load_results_rows()
+            history = compute_history(rows)
+            state["local_discards_since_keep"] = max(
+                int(state.get("local_discards_since_keep", 0)),
+                compute_local_discards_since_last_keep(rows),
+            )
+            results_descriptions = "\n".join(row.get("description", "") for row in rows)
             history_text = journal_text + "\n" + results_descriptions
             base_text = read_text(KEPT)
             TRAIN.write_text(base_text, encoding="utf-8")
@@ -958,7 +1326,13 @@ def main() -> int:
                     update_status_file(state, history, msg)
                     return 0
 
-            experiment = choose_next_experiment(state, history, base_text, history_text)
+            try:
+                experiment = choose_next_experiment(state, history, base_text, history_text)
+            except RuntimeError as exc:
+                msg = f"stop: {exc}. Best kept val_cindex={history['best_keep']:.6f}."
+                record_stop_report(msg)
+                update_status_file(state, history, msg)
+                return 0
             save_json(STATE, state)
             launch_experiment(state, history, experiment)
             save_json(STATE, state)
