@@ -1049,3 +1049,279 @@ Rules:
 - Decision: **crash**; restored `train.py` from `last_kept_train.py`.
 - Learning: The candidate did not finish cleanly.
 - Next: Continue from the kept baseline with the next experiment.
+
+## Run 130
+- Hypothesis: The current wide single-hidden baseline may benefit from a learned normalization step before the linear and nonlinear correction heads, which could stabilize optimization better than another width tweak.
+- Change: Added `nn.LayerNorm(16)` on standardized encoded features before both the residual MLP and the linear skip path, keeping the kept `(24,)` architecture and optimizer otherwise unchanged.
+- Result: `val_cindex` **0.773349** at `best_step` **350** vs best kept **0.782152**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: Pre-head normalization strongly hurt this anchored model family; simple train-split standardization already seems sufficient, and extra normalization disrupts the useful scale information in the correction paths.
+- Next: Return to the kept `(24,)` baseline and try a different family such as activation or optimizer changes rather than more normalization.
+
+## Run 131
+- Hypothesis: The current winner may still be wasting capacity relearning the pheno-no-age anchor, so explicitly penalizing correlation between the anchor term and the learned correction could force the residual path to extract genuinely new signal.
+- Change: Kept the winning `(24,)` residual-plus-linear architecture, but trained it with an added squared-correlation penalty between the scaled anchor score and the learned correction term.
+- Result: `val_cindex` **0.780485** at `best_step` **900** vs best kept **0.782152**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: Orthogonalizing the correction path helped more than most recent radical probes and delayed the best checkpoint, but it still did not clear the keep threshold; the idea has signal, but this direct penalty was not enough on its own.
+- Next: Try a materially different structural family rather than tuning the penalty strength.
+
+## Run 132
+- Hypothesis: A stricter inductive bias may generalize better than the free-form residual head, so replacing the multivariate correction with signed monotone 1D biomarker calibrators could capture stable nonlinear effects while staying faithful to the original biomarker directions.
+- Change: Replaced the dense residual-plus-linear correction with nine signed monotone additive calibrators on transformed biomarkers, while keeping the pheno-no-age score as an anchor term.
+- Result: `val_cindex` **0.762923** at `best_step` **900** vs best kept **0.782152**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This stronger structure was too restrictive for the dev split; additive monotone calibration leaves too much cross-biomarker signal on the table relative to the kept wide single-hidden model.
+- Next: Return to the kept baseline and test a different optimization family rather than further additive-structure variants.
+
+## Run 133
+- Hypothesis: The current basin may benefit from gentler early optimization and a slower late decay, so full-batch warmup plus cosine learning-rate decay could improve the same model without the downside of mini-batch noise.
+- Change: Kept the winning `(24,)` residual-plus-linear model, but replaced constant learning rate with a full-batch warmup followed by cosine decay.
+- Result: `val_cindex` **0.781110** at `best_step` **900** vs best kept **0.782152**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This was the strongest pure training-dynamics probe so far and nearly matched the incumbent, but constant-LR training still edges it out on the frozen dev validation split.
+- Next: Focus on hybrids that preserve the strong `(24,)` basin while changing what the correction path is allowed to learn, rather than replacing the entire model or only changing scalar schedules.
+
+## Run 134
+- Hypothesis: The winning model may improve if the correction paths are structurally forbidden from directly reading the `pheno_no_age_xb` anchor coordinate, forcing them to use complementary biomarker information instead of re-expressing the same scalar.
+- Change: Kept the winning `(24,)` residual-plus-linear architecture, but zeroed the anchor channel from the standardized correction inputs before both the residual MLP and the linear skip path.
+- Result: `val_cindex` **0.777815** at `best_step` **450** vs best kept **0.782152**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: Hard structural separation is too strict; the current winner appears to need direct access to the anchor channel inside the correction paths, even if a softer decorrelation objective showed some promise.
+- Next: Retry a different radical family rather than stricter anchor separation.
+
+## Run 135
+- Hypothesis: The previously crashed dual raw+engineered family may still have upside if implemented with smaller separate towers, explicit train-split standardization, and gradient clipping instead of a single wide fusion MLP.
+- Change: Replaced the baseline with a stability-first dual-tower model: one small tower over transformed raw biomarkers, one small tower over engineered encoder features, then a compact fusion head added to the pheno-no-age anchor.
+- Result: `val_cindex` **0.777262** at `best_step` **400** vs best kept **0.782152**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: The dual-representation family can be made stable and scriptable, but this cleaned-up version still underperforms the kept anchored single-basin model by a wide margin.
+- Next: Probe a different hybrid inside the incumbent basin rather than more raw/engineered tower designs.
+
+## Run 136
+- Hypothesis: The kept model may be missing useful multiplicative structure that a standard MLP does not capture efficiently, so adding a tiny explicit low-rank quadratic correction channel could improve ranking without needing a deeper or wider head.
+- Change: Kept the winning `(24,)` residual-plus-linear model, but added a rank-3 quadratic interaction path over standardized engineered features.
+- Result: `val_cindex` **0.776460** at `best_step` **450** vs best kept **0.782152**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: Explicit second-order interaction structure was not helpful here; the existing residual-plus-linear correction already captures the useful interaction signal better than this low-rank quadratic add-on.
+- Next: Focus future radical attempts on optimizer/seed/ensemble-style variance reduction or softer anchor-aware hybrids, since harder structural rewrites are consistently worse.
+
+## Run 137
+- Hypothesis: The winning architecture may benefit from weight-space smoothing even if raw training weights are noisy, so evaluating and exporting an exponential-moving-average copy of the baseline could improve the selected checkpoint without changing the model family.
+- Change: Kept the winning `(24,)` residual-plus-linear architecture and constant-LR training, but tracked an EMA copy of the weights for validation and export.
+- Result: `val_cindex` **0.782420** at `best_step` **850** vs best kept **0.782152**.
+- Decision: **discard**; although numerically higher, it did not clear the `+0.0003` keep threshold. Restored `train.py` from `last_kept_train.py`.
+- Learning: Weight-space smoothing is the strongest new direction so far and moved the model closer than any radical structural rewrite, but the gain is still too small to count as a keep.
+- Next: Try another ensemble-style idea that preserves the current basin rather than replacing the representation.
+
+## Run 138
+- Hypothesis: An in-graph ensemble of multiple narrow correction heads may average out idiosyncratic residual behavior better than one single head while preserving the same anchored representation.
+- Change: Replaced the single residual MLP with two narrow residual heads whose outputs were fused by learned positive weights, while keeping the anchor term and linear skip path unchanged.
+- Result: `val_cindex` **0.780927** at `best_step` **900** vs best kept **0.782152**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: Multi-head correction did not beat the simpler single-head winner; ensembling inside the correction path alone is weaker than direct EMA smoothing of the whole model.
+- Next: Combine the two strongest variance-reduction signals rather than trying another head topology.
+
+## Run 139
+- Hypothesis: The two strongest near-miss ideas, EMA smoothing and full-batch warmup-plus-cosine decay, may compound if the schedule finds a smoother basin and the EMA export stabilizes it further.
+- Change: Kept the winning `(24,)` residual-plus-linear architecture, but trained with full-batch warmup-plus-cosine LR decay while validating and exporting an EMA copy of the weights.
+- Result: `val_cindex` **0.781497** at `best_step` **950** vs best kept **0.782152**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: The combination underperformed the simpler EMA-only run, suggesting the constant-LR basin still suits this architecture best even when weight smoothing is added.
+- Next: Focus any further radical attempts on other forms of benchmark-legal averaging or seed diversity, since EMA is the clearest current lead.
+
+## Run 140
+- Hypothesis: Uniformly averaging a short window of recent high-performing checkpoints may reduce variance better than raw weights while staying on the winning constant-LR basin.
+- Change: Kept the winning `(24,)` residual-plus-linear architecture, but evaluated and exported a rolling uniform average of the last few eval-step checkpoints.
+- Result: `val_cindex` **0.781719** at `best_step` **800** vs best kept **0.782152**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: Short-window snapshot averaging was weaker than EMA smoothing on this basin, so uniform checkpoint averaging is not the best averaging kernel here.
+- Next: Try seed-diverse in-graph averaging rather than more weight-space averages of the same single trajectory.
+
+## Run 141
+- Hypothesis: A benchmark-legal in-graph ensemble of independently initialized correction towers may reduce variance across basins better than single-trajectory averaging.
+- Change: Replaced the single correction path with a seed-split equal-mix ensemble of three small towers, each with its own nonlinear and linear correction branch.
+- Result: crash at TorchScript export due to a scriptability issue around the tower-count constant; training itself completed before export.
+- Decision: **crash**; fix the scripting issue and rerun the same idea cleanly.
+- Learning: The first attempt did not fail for modeling reasons, so the family still deserved one repaired measurement.
+- Next: Retry the same seed-split ensemble after the TorchScript fix.
+
+## Run 142
+- Hypothesis: After fixing the export bug, a seed-diverse equal-mix correction ensemble may average out head-specific noise better than the previously tried learned-weight two-head ensemble.
+- Change: Retried the seed-split equal-mix correction ensemble after fixing the TorchScript export issue.
+- Result: `val_cindex` **0.779019** at `best_step` **1800** vs best kept **0.782152**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: Forcing equal mixing and seed diversity did not beat the simple incumbent; the ensemble trained stably but still underperformed both the kept baseline and EMA smoothing.
+- Next: EMA remains the strongest new lead; further progress likely needs a more aggressive averaging strategy or a fundamentally different search target rather than more correction-head ensembles.
+
+## Run 143
+- Hypothesis: Averaging two independently initialized full baseline models may reduce variance across whole risk functions better than only ensembling correction heads.
+- Change: Replaced the single model with a TorchScript-friendly mean of two full `RiskMLP` baselines trained jointly and exported as one artifact.
+- Result: `val_cindex` **0.780853** at `best_step` **500** vs best kept **0.782152**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: Whole-model averaging was still weaker than EMA smoothing; averaging across full risk maps did not beat the simpler single-model basin.
+- Next: Try one final EMA-family variant rather than more ensemble topology changes.
+
+## Run 144
+- Hypothesis: Plain EMA may be averaging too much early trajectory noise, so delaying the EMA start until the model reaches the late high-quality basin could improve over the earlier near-miss.
+- Change: Kept the winning `(24,)` residual-plus-linear architecture, but started EMA only after a burn-in at step 500 and used the EMA teacher for later validation/export.
+- Result: `val_cindex` **0.779165** at `best_step` **450** vs best kept **0.782152**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: The delayed-start EMA idea was materially worse than plain EMA; resetting the teacher late caused it to miss the strongest region rather than sharpen it.
+- Next: Plain EMA remains the clearest surviving lead; further progress likely depends on more direct tuning of that exact averaging setup rather than delayed or structurally different variants.
+
+## Run 145
+- Hypothesis: Forcing the model to produce similar risk scores under independent dropout masks may reduce variance in the residual path and improve generalization more directly than weight-space averaging alone.
+- Change: Kept the winning `(24,)` residual-plus-linear architecture, but trained with two dropout passes per step and added a small consistency penalty between their risk scores.
+- Result: `val_cindex` **0.778946** at `best_step` **550** vs best kept **0.782152**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: Output-consistency regularization suppressed useful flexibility more than it reduced noise; it underperformed both the incumbent and the EMA near-miss.
+- Next: Try a different optimizer-level family instead of more dropout-based regularization.
+
+## Run 146
+- Hypothesis: Lookahead may help the same constant-LR AdamW basin by smoothing the optimization path in parameter space without the weaknesses seen in delayed EMA or cosine decay.
+- Change: Kept the winning `(24,)` residual-plus-linear architecture, but wrapped AdamW updates with Lookahead slow-weight interpolation every few steps.
+- Result: `val_cindex` **0.780723** at `best_step` **1700** vs best kept **0.782152**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: Lookahead was directionally better than many structural rewrites, but still clearly behind plain EMA and below the incumbent threshold.
+- Next: Plain EMA still stands as the strongest non-keep result.
+
+Note: One appended `results.tsv` row in this region was mis-labeled during manual logging after the Lookahead run; the journal entries above record the correct outcomes for Runs 145 and 146.
+
+## Run 147
+- Hypothesis: Plain EMA helped only at validation/export time, so using the EMA path as an explicit teacher during training might regularize the optimization trajectory itself and push the same `(24,)` model into a better basin.
+- Change: Kept the incumbent residual-plus-linear `RiskMLP`, added an EMA teacher with decay `0.999`, trained the student on Cox loss plus a small z-scored risk consistency term against the teacher, and continued to validate/export the teacher weights as one TorchScript artifact.
+- Result: `val_cindex` **0.782634** at `best_step` **1950** vs prior best kept **0.782152**.
+- Decision: **keep**; saved the new baseline with `manage_kept.py save`.
+- Learning: Temporal self-distillation finally broke through the local plateau; letting the slow teacher shape the student trajectory mattered more than architecture churn.
+- Next: Probe whether the win came from the consistency weight itself or from the broader idea of richer temporal averaging.
+
+## Run 148
+- Hypothesis: The successful mean-teacher run may still have been slightly over-regularized, so reducing the consistency term could preserve the gain while allowing more Cox-driven flexibility.
+- Change: Re-ran the mean-teacher setup from Run 147, changing only `TEACHER_CONSISTENCY_WEIGHT` from `0.05` to `0.03`.
+- Result: `val_cindex` **0.781746** at `best_step` **1800** vs kept **0.782634**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: The improvement was not just "EMA teacher but weaker"; the stronger consistency coupling in Run 147 was part of what made that run work.
+- Next: Try a different temporal-averaging idea rather than local mean-teacher weakening.
+
+## Run 149
+- Hypothesis: A single EMA decay may still be too restrictive, so blending fast and slow EMA shadows into one exported checkpoint could match the sharp early peak and the smoother late basin at the same time.
+- Change: Removed the teacher consistency loss, kept pure Cox training, maintained two EMA copies with decays `0.990` and `0.997`, fused them with a `0.5/0.5` convex blend for validation/export, and stored the best blended state as one TorchScript artifact.
+- Result: `val_cindex` **0.783021** at `best_step` **800** vs kept **0.782634**.
+- Decision: **keep**; saved the new baseline with `manage_kept.py save`.
+- Learning: The strongest signal so far is now richer weight-space averaging rather than architectural novelty; a two-timescale trajectory filter beat both plain EMA and mean-teacher consistency.
+- Next: Test whether leaning slightly toward the faster EMA improves the already-better dual-EMA peak.
+
+## Run 150
+- Hypothesis: Since the dual-EMA keep peaked early, shifting the fused export weights a little toward the faster shadow may sharpen the best region further.
+- Change: Re-ran the dual-EMA setup from Run 149, changing only the convex blend from `0.5 fast / 0.5 slow` to `0.6 fast / 0.4 slow`.
+- Result: `val_cindex` **0.782948** at `best_step` **800** vs kept **0.783021**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: The equal fast/slow mix was already near the sweet spot; tilting toward the shorter-memory EMA slightly weakened the peak.
+- Next: The dual-EMA family is now the best-performing direction, with the symmetric blend as the current frontier.
+
+## Run 151
+- Hypothesis: If dual-EMA is helping mainly by smoothing a sharp basin, then optimizing for flatter local geometry with Sharpness-Aware Minimization might improve the underlying trajectory before the same dual-EMA export is applied.
+- Change: Kept the Run 149 architecture and dual-EMA export path, but replaced the plain AdamW step with a SAM two-pass update using `SAM_RHO = 0.05`.
+- Result: `val_cindex` **0.780047** at `best_step` **500** vs kept **0.783021**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: In this full-batch setting, explicit sharpness-aware optimization hurt more than it helped; the winning signal still seems to come from post-step weight averaging rather than from more aggressive optimizer geometry.
+- Next: Try a more direct lag-reduction filter in weight space instead of changing the optimizer again.
+
+## Run 152
+- Hypothesis: The dual-EMA keep may still lag the best region, so a level-plus-trend temporal filter that extrapolates the smoothed weights forward could reduce averaging lag without giving up stability.
+- Change: Replaced the dual-EMA export logic with a Holt-style weight filter: maintained smoothed level and trend states for each parameter with `HOLT_LEVEL_ALPHA = 0.01`, `HOLT_TREND_BETA = 0.1`, and exported `level + 1.0 * trend` for validation/export.
+- Result: `val_cindex` **0.782824** at `best_step` **650** vs kept **0.783021**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: Trend-aware extrapolation had more signal than SAM and some early promise, but the straightforward dual-EMA blend remained stronger and more stable overall.
+- Next: The surviving evidence still points toward the dual-EMA family, with future progress more likely from tuning its decay pair or trying a mild non-convex extrapolation from the fast/slow gap rather than broader optimizer changes.
+
+## Run 153
+- Hypothesis: The equal dual-EMA blend may still be lagging the best point, so extrapolating slightly past the fast EMA in the fast-minus-slow direction could debias the smoothing without changing the training trajectory.
+- Change: Kept the Run 149 training loop and EMA decays, but replaced the convex export blend with the affine combination `(1.0 + 0.20) * fast - 0.20 * slow` for validation/export.
+- Result: `val_cindex` **0.781292** at `best_step` **800** vs kept **0.783021**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: Overshooting the fast EMA was too aggressive; the useful signal from fast-minus-slow disagreement does not translate into a better checkpoint through simple extrapolation.
+- Next: Try changing the temporal blend structure more locally rather than pushing the whole model beyond the convex hull.
+
+## Run 154
+- Hypothesis: Different parameter families may prefer different temporal cutoffs, so using one global fast/slow blend for every tensor could be leaving accuracy on the table.
+- Change: Kept the same two EMA shadows from Run 149, but built the export checkpoint with family-specific fast weights: `0.62` for scalar path gains, `0.38` for `residual_head.*`, `0.48` for `linear_skip.*`, and `0.45` elsewhere.
+- Result: `val_cindex` **0.782885** at `best_step` **850** vs kept **0.783021**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: Heterogeneous temporal mixing had more signal than affine extrapolation and nearly matched the keep, but the simple symmetric global blend still remained best.
+- Next: The evidence keeps collapsing back onto the same conclusion: richer weight averaging is the only real lever left, but the current dual-EMA `0.990/0.997` with equal fusion is still the strongest concrete instance.
+
+## Run 155
+- Hypothesis: The current dual-EMA keep may be held back by using one pair of temporal cutoffs for the entire run, so letting both EMA decays change after the early fast-moving phase could improve the same equal-blend export.
+- Change: Kept the Run 149 architecture and `0.5/0.5` fast-slow export blend, but used scheduled EMA decays: `0.986/0.995` before step `500`, then `0.990/0.998` afterward.
+- Result: `val_cindex` **0.782623** at `best_step` **900** vs kept **0.783021**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: Changing the decay pair over time added complexity without beating the simple fixed dual-EMA; the winning signal still seems to come from a stable pair rather than a phase-switched one.
+- Next: Try a richer fixed temporal filter instead of time-varying decay schedules.
+
+## Run 156
+- Hypothesis: A third EMA timescale might capture useful medium-horizon structure that the current two-shadow filter misses, allowing a stronger export checkpoint without extrapolation.
+- Change: Replaced the two-shadow export with three parallel EMA shadows using decays `0.990`, `0.994`, and `0.997`, and exported their equal `1/3` mixture for validation/export.
+- Result: `val_cindex` **0.782824** at `best_step` **850** vs kept **0.783021**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: Adding a middle timescale did not improve on the best dual-EMA basin; more temporal scales by themselves are not sufficient if the original two already span the useful signal.
+- Next: The frontier remains stubbornly the same: the simple fixed dual-EMA with `0.990/0.997` and equal fusion is still the strongest point found.
+
+## Run 157
+- Hypothesis: The current keep may be losing information when fast and slow EMA weights are averaged into one network, so a single exported artifact that keeps both temporal snapshots alive and averages their predictions could outperform weight-space fusion.
+- Change: Kept the same training trajectory and the same `0.990` / `0.997` EMA shadows, but replaced weight blending with a TorchScript wrapper containing both full `RiskMLP` snapshots and returning `0.5 * (fast(x) + slow(x))`.
+- Result: `val_cindex` **0.783122** at `best_step` **800** vs kept **0.783021**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`, because it did not clear the current keep margin.
+- Learning: Prediction-space temporal ensembling had real signal and was the strongest non-keep in this batch, but the gain was too small to beat the current benchmark threshold.
+- Next: Try one orthogonal optimizer-level change while keeping the winning dual-EMA export unchanged.
+
+## Run 158
+- Hypothesis: If the online AdamW trajectory is still slightly noisy or over-aggressive, switching to AMSGrad may improve the underlying iterates while leaving the proven dual-EMA export rule untouched.
+- Change: Restored the kept dual-EMA setup and changed only the optimizer to `torch.optim.AdamW(..., amsgrad=True)`.
+- Result: `val_cindex` **0.783096** at `best_step` **850** vs kept **0.783021**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`, because it still missed the keep threshold.
+- Learning: AMSGrad also produced only a small local gain rather than a decisive improvement, reinforcing that the current bottleneck is not obviously vanilla AdamW instability.
+- Next: The search is still circling the same narrow frontier: small improvements are possible, but the fixed dual-EMA keep remains the strongest point that actually satisfies the rules.
+
+## Run 159
+- Hypothesis: The fixed `0.5/0.5` prediction-space mean from Run 157 may be suboptimal, so choosing the fast/slow prediction blend coefficient by the training Cox loss at each eval step could squeeze out more value from the same two temporal snapshots.
+- Change: Kept the same dual-EMA trajectory, but replaced the fixed output mean with a scripted two-model wrapper carrying a scalar `beta` selected by a grid search over the training Cox partial loss at each eval step.
+- Result: `val_cindex` **0.782067** at `best_step` **800** vs kept **0.783021**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: Training-loss tuning was actively misleading here: the selected `beta` collapsed to `1.0` throughout, effectively preferring the fast EMA alone and hurting validation performance.
+- Next: Try one final prediction-space committee that explicitly keeps the raw student alongside the two EMA views.
+
+## Run 160
+- Hypothesis: Run 157's two-snapshot prediction mean may still be omitting useful present-time information, so averaging the raw student, fast EMA, and slow EMA predictions inside one scripted artifact could improve over both weight-space fusion and the two-view committee.
+- Change: Built a single TorchScript wrapper containing three full `RiskMLP` snapshots from one trajectory (`raw`, `fast`, `slow`) and returned their equal `1/3` prediction mean for validation/export.
+- Result: `val_cindex` **0.782871** at `best_step` **700** vs kept **0.783021**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: The prediction-space branch peaked with the simpler two-view fast-plus-slow mean from Run 157; adding the raw student diluted the useful temporal committee signal instead of improving it.
+- Next: The strongest non-keep in this whole branch remains Run 157, so further prediction-space work would need to stay very close to that exact two-snapshot formulation rather than broadening the committee.
+
+## Run 161
+- Hypothesis: A nonlinear two-snapshot committee may beat the linear mean from Run 157, so replacing arithmetic averaging with a tempered log-average-exp fusion could better preserve high-risk agreement between the fast and slow EMA views.
+- Change: Kept the same dual-EMA trajectory and built a scripted two-model wrapper with `temperature = 2.0`, returning `logaddexp(temperature * fast(x), temperature * slow(x)) / temperature - log(2) / temperature`.
+- Result: **crash at export** after reaching `val_cindex` **0.783235** at `best_step` **800`; TorchScript rejected a closed-over Python float constant used for `log(2)`.
+- Decision: **crash**; immediately fixed the wrapper by moving `log(2)` into a registered buffer and re-ran the exact same experiment.
+- Learning: The idea itself had unusually strong signal before export failed, so it was worth a direct scriptability fix rather than abandoning the family.
+- Next: Re-run the same nonlinear committee with the scripting fix in place to get a valid artifact and final result.
+
+## Run 162
+- Hypothesis: The export failure in Run 161 was purely a TorchScript issue, so the same temperature-2 log-average-exp committee should reproduce its strong validation signal once the constant handling is made scriptable.
+- Change: Re-ran the same fast/slow log-average-exp prediction wrapper from Run 161, but stored `log(2)` as a module buffer so the single TorchScript artifact could export cleanly.
+- Result: `val_cindex` **0.783235** at `best_step` **800** vs kept **0.783021**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`, because even this strongest nonlinear committee still missed the current keep threshold.
+- Learning: Nonlinear prediction fusion is the strongest non-keep direction seen recently and improved over the linear two-view mean, but not by enough to replace the current keep.
+- Next: Try one local temperature follow-up to see whether a slightly sharper smooth-max committee can close the remaining gap.
+
+## Run 163
+- Hypothesis: Since the temperature-2 nonlinear committee improved over the linear mean, increasing the temperature further may sharpen the fast/slow agreement signal and push the same family a bit higher.
+- Change: Re-ran the log-average-exp fast/slow wrapper, changing only `LSE_TEMPERATURE` from `2.0` to `4.0`.
+- Result: `val_cindex` **0.783217** at `best_step` **800` vs kept **0.783021**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: The nonlinear committee branch peaks at the milder `temperature = 2.0`; pushing it more toward a hard max slightly weakens the result.
+- Next: The best recent non-keep is now the temperature-2 nonlinear fast/slow committee, but the current fixed dual-EMA keep still remains the strongest benchmark-valid point.
+
+Note: The append-only `results.tsv` rows around Runs 162-163 reflect the latest `run.log` value during manual logging and therefore do not distinguish the two temperature settings correctly; the journal entries above record the correct outcomes.

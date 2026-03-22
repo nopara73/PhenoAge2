@@ -6,6 +6,7 @@ model on the frozen development split and reports validation C-index.
 
 from __future__ import annotations
 
+import copy
 import math
 import time
 from pathlib import Path
@@ -42,7 +43,7 @@ from prepare import (
 # Hyperparameters (edit these directly, no CLI flags needed)
 # ---------------------------------------------------------------------------
 
-HIDDEN_SIZES = (48, 24)
+HIDDEN_SIZES = (24,)
 DROPOUT = 0.05
 LEARNING_RATE = 0.00195
 WEIGHT_DECAY = 0.00026
@@ -51,6 +52,9 @@ SEED = 42
 EARLY_STOP_MIN_DELTA = 1e-4
 EARLY_STOP_PATIENCE_EVALS = 3
 EARLY_STOP_MIN_TRAIN_SECONDS = 20.0
+FAST_EMA_DECAY = 0.990
+SLOW_EMA_DECAY = 0.997
+EMA_BLEND = 0.5
 
 
 class FeatureEncoder(nn.Module):
@@ -201,6 +205,14 @@ def main() -> None:
     model = RiskMLP(HIDDEN_SIZES, DROPOUT).to(device)
     feature_mean, feature_std = fit_standardizer_from_tensor(model, train_x)
     model.set_standardizer(feature_mean, feature_std)
+    fast_ema_model = copy.deepcopy(model).to(device)
+    slow_ema_model = copy.deepcopy(model).to(device)
+    fast_ema_model.eval()
+    slow_ema_model.eval()
+    for param in fast_ema_model.parameters():
+        param.requires_grad_(False)
+    for param in slow_ema_model.parameters():
+        param.requires_grad_(False)
     optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
 
     print(f"Device:            {device}")
@@ -225,9 +237,18 @@ def main() -> None:
         model.train()
         optimizer.zero_grad(set_to_none=True)
         risk_scores = model(train_x)
-        loss = cox_partial_loss(risk_scores, train_times, train_events)
+        cox_loss = cox_partial_loss(risk_scores, train_times, train_events)
+        loss = cox_loss
         loss.backward()
         optimizer.step()
+        with torch.no_grad():
+            for fast_param, slow_param, param in zip(
+                fast_ema_model.parameters(),
+                slow_ema_model.parameters(),
+                model.parameters(),
+            ):
+                fast_param.mul_(FAST_EMA_DECAY).add_(param, alpha=1.0 - FAST_EMA_DECAY)
+                slow_param.mul_(SLOW_EMA_DECAY).add_(param, alpha=1.0 - SLOW_EMA_DECAY)
 
         if device.type == "cuda":
             torch.cuda.synchronize()
@@ -239,18 +260,30 @@ def main() -> None:
 
         if step % EVAL_EVERY == 0:
             eval_count += 1
+            training_state = {key: value.detach().clone() for key, value in model.state_dict().items()}
+            blended_state: dict[str, torch.Tensor] = {}
+            fast_state = fast_ema_model.state_dict()
+            slow_state = slow_ema_model.state_dict()
+            for key in fast_state:
+                blended_state[key] = (
+                    EMA_BLEND * fast_state[key].detach().cpu()
+                    + (1.0 - EMA_BLEND) * slow_state[key].detach().cpu()
+                )
+            model.load_state_dict(blended_state)
             val_cindex = evaluate_cindex(model, val_rows, device)
             if val_cindex > best_val_cindex + EARLY_STOP_MIN_DELTA:
                 best_val_cindex = val_cindex
                 best_step = step
-                best_state = {key: value.detach().cpu().clone() for key, value in model.state_dict().items()}
+                best_state = {key: value.detach().cpu().clone() for key, value in blended_state.items()}
                 evals_since_improvement = 0
             else:
                 evals_since_improvement += 1
+            model.load_state_dict(training_state)
 
             remaining = max(0.0, TIME_BUDGET - train_seconds)
             print(
                 f"step {step:05d} | loss: {loss.item():.6f} | "
+                f"cox: {cox_loss.item():.6f} | "
                 f"val_cindex: {val_cindex:.6f} | best: {best_val_cindex:.6f} | "
                 f"remaining: {remaining:.1f}s"
             )
