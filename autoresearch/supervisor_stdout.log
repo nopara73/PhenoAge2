@@ -1,0 +1,17 @@
+Logged crash result: commit=3573ebe val_cindex=0.000000 memory_gb=0.000
+Restored train.py from C:\Users\user\Desktop\PhenoAge2\autoresearch\last_kept_train.py
+Total runs:        111
+Keep/discard/crash:14/84/13
+
+Best overall:
+discard | val=0.779756 | mem_gb=0.019 | commit=3f82efd | LEARNING_RATE 0.00195 -> 0.001975; val_cindex 0.779756 best_step 1700
+
+Best kept:
+   keep | val=0.779707 | mem_gb=0.019 | commit=3f82efd | Linear skip correction on single-hidden baseline; val_cindex 0.779707 best_step 1700
+
+Recent runs:
+discard | val=0.779118 | mem_gb=0.019 | commit=3f82efd | Encoded feature noise regularization on single-hidden baseline; val_cindex 0.779118 best_step 2050
+discard | val=0.778240 | mem_gb=0.018 | commit=3f82efd | Mini-batch Cox with cosine decay on single-hidden baseline; val_cindex 0.778240 best_step 250
+discard | val=0.778155 | mem_gb=0.020 | commit=3f82efd | Retry hybrid Cox + sampled pairwise ranking loss after memory fix; val_cindex 0.778155 best_step 350
+discard | val=0.779483 | mem_gb=0.019 | commit=3f82efd | Feature gate on standardized encoder on single-hidden baseline; val_cindex 0.779483 best_step 450
+  crash | val=0.000000 | mem_gb=0.000 | commit=3573ebe | crash: Raw biomarker MLP (32, 16), no pheno anchor

@@ -1,17 +1,16 @@
 {
-  "archive_path": "C:\\Users\\user\\Desktop\\PhenoAge2\\autoresearch\\run_110_feature_gate_current.log",
+  "archive_path": "C:\\Users\\user\\Desktop\\PhenoAge2\\autoresearch\\run_114_radical_models.log",
   "baseline_action_done": false,
   "baseline_best": 0.779707,
-  "change": "Add a learned sigmoid feature gate on standardized encoded features before both the residual MLP and the linear skip path.",
-  "child_pid": 0,
-  "description": "Feature gate on standardized encoder on single-hidden baseline",
-  "family": "feature_gate_current",
-  "hypothesis": "The current model treats every encoded biomarker channel as equally available to the correction paths, so a learned per-feature gate may suppress noisy corrections and focus capacity on the most stable encoded signals.",
+  "change": "Use a standardized linear Cox model on the current 16 engineered biomarker features.",
+  "child_pid": 77372,
+  "description": "Engineered-feature linear Cox",
+  "family": "radical_models",
+  "hypothesis": "The best signal may live in the engineered 16-feature representation but not require any nonlinear residual network.",
   "journal_written": false,
   "kind": "explore",
   "logged": false,
-  "prefer_simpler_on_tie": false,
-  "returncode": 0,
-  "started_at_epoch": 1774161467.553362,
-  "train_hash": "7989df9b33ed"
+  "prefer_simpler_on_tie": true,
+  "started_at_epoch": 1774163595.6669788,
+  "train_hash": "ec05c139e7da"
 }

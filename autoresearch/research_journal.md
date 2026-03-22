@@ -889,3 +889,35 @@ Rules:
 - Decision: **discard**; restored `train.py` from `last_kept_train.py`.
 - Learning: This change did not improve the kept baseline enough to justify replacing it.
 - Next: Restore the kept baseline and move to the next queued conceptual probe.
+
+## Run 110
+- Hypothesis: The current model treats every encoded biomarker channel as equally available to the correction paths, so a learned per-feature gate may suppress noisy corrections and focus capacity on the most stable encoded signals.
+- Change: Add a learned sigmoid feature gate on standardized encoded features before both the residual MLP and the linear skip path.
+- Result: `val_cindex` **0.779483** at `best_step` **450** vs best kept **0.779707**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and try the next experiment.
+
+## Run 111
+- Hypothesis: Pure raw-biomarker modeling may outperform the anchor-based design if the hand-crafted pheno pathway is constraining the optimum.
+- Change: Replace the anchor-aligned encoder/pathway with a raw 9-biomarker MLP using HIDDEN_SIZES=(32, 16).
+- Result: crash / no completed summary block in `run.log`
+- Decision: **crash**; restored `train.py` from `last_kept_train.py`.
+- Learning: The candidate did not finish cleanly.
+- Next: Continue from the kept baseline with the next experiment.
+
+## Run 112
+- Hypothesis: A wider anchor-free MLP could capture nonlinear structure that the anchored family cannot express.
+- Change: Replace the anchor-aligned encoder/pathway with a raw 9-biomarker MLP using HIDDEN_SIZES=(64, 32).
+- Result: crash / no completed summary block in `run.log`
+- Decision: **crash**; restored `train.py` from `last_kept_train.py`.
+- Learning: The candidate did not finish cleanly.
+- Next: Continue from the kept baseline with the next experiment.
+
+## Run 113
+- Hypothesis: A completely linear age-free model on raw biomarkers tests whether the search is overcomplicating a mostly linear signal.
+- Change: Use a standardized 9-biomarker linear Cox model with no pheno anchor and no hidden layers.
+- Result: `val_cindex` **0.756476** at `best_step` **250** vs best kept **0.779707**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and try the next experiment.

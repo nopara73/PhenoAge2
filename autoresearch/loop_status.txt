@@ -1,12 +1,7 @@
-updated_at: 2026-03-22 07:39:35
-supervisor_pid: 80516
-started_at_epoch: 1774136462.9348943
-phase: explore
+updated_at: 2026-03-22 08:13:15
+supervisor_pid: 76956
 best_kept_val_cindex: 0.779707
-plateau_streak: 9
-consecutive_discards: 9
-completed_runs: 98
-pending_description: Feature gate on standardized encoder on single-hidden baseline
-pending_family: feature_gate_current
-pending_pid: 0
-note: Supervisor failed; see loop_stop_report.txt.
+consecutive_discards: 10
+completed_runs: 99
+pending_description: Engineered-feature linear Cox
+note: Started: Engineered-feature linear Cox

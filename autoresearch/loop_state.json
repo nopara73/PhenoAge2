@@ -1,5 +1,10 @@
 {
-  "attempted_hashes": [],
+  "attempted_hashes": [
+    "7989df9b33ed",
+    "69ef4522a567",
+    "e9a07fbb03b8",
+    "1d68c1e5a97b"
+  ],
   "exploration_queue": [
     {
       "change": "Add a learned sigmoid feature gate on standardized encoded features before both the residual MLP and the linear skip path.",
@@ -25,5 +30,5 @@
   "local_discards_since_keep": 6,
   "phase": "explore",
   "started_at_epoch": 1774136462.9348943,
-  "supervisor_pid": 0
+  "supervisor_pid": 76956
 }

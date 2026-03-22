@@ -125,6 +125,13 @@ def load_results_rows() -> list[dict[str, str]]:
         return list(reader)
 
 
+def has_logged_result(*, description: str, status: str) -> bool:
+    for row in load_results_rows():
+        if row.get("description", "").strip() == description and row.get("status", "").strip() == status:
+            return True
+    return False
+
+
 def compute_history(rows: list[dict[str, str]]) -> dict[str, Any]:
     best_keep = 0.0
     consecutive_discards = 0
@@ -1719,10 +1726,24 @@ def reconcile_pending_run(state: dict[str, Any]) -> bool:
                 f"{pending['description']}; val_cindex {summary['val_cindex']:.6f} "
                 f"best_step {summary['best_step']}"
             )
-            run_and_log(description, status)
-            pending["logged"] = True
-            pending["status"] = status
-            save_json(PENDING, pending)
+            if has_logged_result(description=description, status=status):
+                pending["logged"] = True
+                pending["status"] = status
+                save_json(PENDING, pending)
+            else:
+                try:
+                    run_and_log(description, status)
+                except Exception as exc:
+                    update_status_file(
+                        state,
+                        compute_history(load_results_rows()),
+                        f"Retrying result logging for {pending['description']}: {exc}",
+                    )
+                    time.sleep(RUN_POLL_SECONDS)
+                    return True
+                pending["logged"] = True
+                pending["status"] = status
+                save_json(PENDING, pending)
         if not pending.get("journal_written", False):
             if status == "keep":
                 decision = "**keep**"
@@ -1757,9 +1778,23 @@ def reconcile_pending_run(state: dict[str, Any]) -> bool:
 
     archive_run_log(pending)
     if not pending.get("logged", False):
-        run_and_log(f"crash: {pending['description']}", "crash")
-        pending["logged"] = True
-        save_json(PENDING, pending)
+        description = f"crash: {pending['description']}"
+        if has_logged_result(description=description, status="crash"):
+            pending["logged"] = True
+            save_json(PENDING, pending)
+        else:
+            try:
+                run_and_log(description, "crash")
+            except Exception as exc:
+                update_status_file(
+                    state,
+                    compute_history(load_results_rows()),
+                    f"Retrying crash logging for {pending['description']}: {exc}",
+                )
+                time.sleep(RUN_POLL_SECONDS)
+                return True
+            pending["logged"] = True
+            save_json(PENDING, pending)
     if not pending.get("journal_written", False):
         append_journal(
             hypothesis=pending["hypothesis"],
