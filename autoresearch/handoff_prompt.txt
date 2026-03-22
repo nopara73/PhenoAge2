@@ -15,26 +15,42 @@ Hard constraints:
 - This repo already has a working environment at `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe`.
 - Always invoke Python scripts with that exact interpreter, never with bare `python`.
 
+Critical anti-repetition rules:
+- Before proposing any experiment, read `results.tsv` and check if this exact change was already tried. If it was, DO NOT try it again unless you can explain concretely why the retry is materially different (different baseline architecture, different supporting hyperparameters, etc.).
+- NEVER cycle through the same small set of hyperparameter perturbations. If a local HP neighborhood has been explored (3+ failed variants of the same knob), move to a different conceptual family.
+- A "conceptual family" means a qualitatively different approach: architecture shape, activation function, optimizer, loss function, feature representation, training schedule, regularization technique, etc.
+- When a structural change improves val_cindex (even as a discard), that is a SIGNAL. Investigate that direction further with follow-up experiments rather than returning to micro-tuning the same 4 scalars.
+
+Experiment diversity requirements:
+- Each experiment session should try ideas from at least 2 different conceptual families, not just hyperparameter perturbations of the same model.
+- Prioritize structural changes (architecture, loss, features, optimizer) over scalar hyperparameter tuning. A +0.003 gain from a structural change is worth far more than a +0.0001 gain from tweaking weight decay by 4%.
+- When stuck, consult this checklist of underexplored families:
+  1. Architecture width/depth: wider or deeper residual MLPs
+  2. Activation functions: SiLU, ELU, Mish, LeakyReLU
+  3. Normalization: LayerNorm, BatchNorm
+  4. Optimizer: amsgrad, different beta values, SGD with momentum
+  5. LR schedule: cosine decay, warmup + cosine
+  6. Loss: time-weighted Cox, pairwise ranking
+  7. Features: remove/change interaction features, add ratios, add squares
+  8. Regularization: feature noise, gradient clipping, different dropout levels with wider networks
+  9. Scale/init: different residual_scale, linear_scale starting points
+  10. Seeds: different random seeds to test basin robustness
+  11. Combined changes: pair two individually promising ideas (e.g., SiLU + wider MLP)
+
 Cross-run memory rules:
 - Before every experiment, run `python summarize_results.py` and read the latest journal entries.
 - Base the next idea on previous outcomes. Do not pick unrelated strategies at random.
-- Change only one conceptual thing per run.
-- Prefer local improvements near the current best kept configuration.
-- If an idea was discarded, do not retry it unless you can explain why the retry is materially different.
+- Change only one conceptual thing per run (except for "combined" experiments that pair two previously promising individual changes).
+- If an idea was tried and discarded, do not retry it unless you can explain why the retry is materially different.
 - A run may finish before 300s if `train.py` triggers validation-based early stopping; that is expected, not a failure.
-- If 8 consecutive completed runs fail to improve the best kept `val_cindex` by at least `0.0005`, treat the current local neighborhood as plateaued rather than continuing the same micro-tuning pattern.
-- When plateaued, stop tuning the same small hyperparameter family and schedule an exploration burst of 1 to 3 broader experiments drawn from different conceptual families such as feature representation, model architecture, optimization/training dynamics, or loss design.
-- Each exploration-burst run must still change only one conceptual thing, must stay within the benchmark rules, and must be justified using what earlier runs learned.
-- After an exploration burst, either keep the best broader change and resume local tuning around it, or restore the last kept baseline and try a different conceptual family.
-- Do not repeat a failed conceptual family unless the retry is materially different and the journal explicitly explains why.
 
 Autonomy rules:
 - Do not stop after one or two experiments just to summarize.
-- After each completed run, immediately choose the next single-knob experiment and continue.
+- After each completed run, immediately choose the next experiment and continue.
 - Keep iterating until one of these happens:
   1. 10 hours have elapsed, or
   2. 10000 completed experiments, or
-  3. 30 consecutive discarded runs show no meaningful improvement and you can clearly explain why the search is stuck, or
+  3. All experiment families have been tried and no fresh ideas remain, with a clear explanation of why the search is saturated, or
   4. the user interrupts you.
 - Only give a final stop-and-report summary when one of those stopping conditions is met.
 
@@ -69,17 +85,19 @@ Keep/discard workflow:
    - decision
    - learning
    - next
-9. If the run is better in a meaningful way, keep it and run `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe "C:\Users\user\Desktop\PhenoAge2\autoresearch\manage_kept.py" save`.
-10. If the run is worse or crashes, run `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe "C:\Users\user\Desktop\PhenoAge2\autoresearch\manage_kept.py" restore` before trying the next idea.
+9. A run is worth KEEPING if val_cindex improves by at least 0.0003 over the current best. Do not use a stricter threshold.
+10. If the run is better, keep it and run `python manage_kept.py save`.
+11. If the run is worse or crashes, run `python manage_kept.py restore` before trying the next idea.
 
 Search style:
-- Favor small, disciplined iterations over big rewrites.
+- Favor DIVERSITY over polish. Try genuinely different ideas rather than endlessly polishing the same knob.
+- Structural changes (architecture, loss, features) should be tried before exhaustive hyperparameter sweeps.
+- When a structural change scores close to (within 0.001 of) the best, that direction deserves follow-up experiments with tuned hyperparameters.
 - Prefer simpler models when performance is similar.
 - Periodically summarize what is working and what is not working.
-- If the loop starts repeating itself, widen the search locally and keep going until a stopping condition is actually met.
-- Use an exploit-then-explore rhythm: stay local while progress is real, but once diminishing returns are clear, deliberately test a small number of more interesting strategy shifts instead of endlessly polishing the same knob.
-- Prefer exploration bursts that are meaningfully different from the recent run history, but still plausible given what the journal says about current bottlenecks.
+- If you notice you are about to try the same hyperparameter perturbation that already appears in results.tsv, STOP and pick a different experiment from a different conceptual family instead.
 
 When updating the user:
 - Report the current best kept `val_cindex`.
 - Mention what hypothesis you are testing next and why it follows from prior runs.
+- If multiple experiment families have been explored, briefly summarize which ones helped and which ones did not.

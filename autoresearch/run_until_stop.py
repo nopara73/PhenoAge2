@@ -33,12 +33,14 @@ STOP_REPORT = HERE / "loop_stop_report.txt"
 
 MAX_SECONDS = 10 * 3600
 MAX_RUNS = 10_000
-MAX_CONSECUTIVE_DISCARDS = 30
-MAX_EXPLORATION_BURST = 6
-MAX_LOCAL_DISCARDS_BEFORE_EXPLORATION = 2
-MEANINGFUL_IMPROVEMENT = 0.0005
+MAX_CONSECUTIVE_DISCARDS = 60
+MEANINGFUL_IMPROVEMENT = 0.0003
 SIMILARITY_TOLERANCE = 0.00005
 RUN_POLL_SECONDS = 5.0
+
+# ---------------------------------------------------------------------------
+# File utilities
+# ---------------------------------------------------------------------------
 
 
 def read_text(path: Path) -> str:
@@ -64,7 +66,7 @@ def save_json(path: Path, payload: dict[str, Any]) -> None:
     atomic_write_text(path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
 
 
-def run(cmd: list[str], *, check: bool = False, stdout=None, stderr=None) -> subprocess.CompletedProcess:
+def run_cmd(cmd: list[str], *, check: bool = False, stdout=None, stderr=None) -> subprocess.CompletedProcess:
     return subprocess.run(
         cmd,
         cwd=str(HERE),
@@ -83,6 +85,11 @@ def pid_is_running(pid: int | None) -> bool:
     except (OSError, SystemError, ValueError):
         return False
     return True
+
+
+# ---------------------------------------------------------------------------
+# Parsing and history
+# ---------------------------------------------------------------------------
 
 
 def parse_metric(text: str, name: str) -> float:
@@ -118,52 +125,54 @@ def load_results_rows() -> list[dict[str, str]]:
         return list(reader)
 
 
-def is_local_description(description: str) -> bool:
-    normalized = description.strip()
-    if normalized.startswith("crash: "):
-        normalized = normalized[7:]
-    prefixes = ("LEARNING_RATE ", "WEIGHT_DECAY ", "DROPOUT ", "EVAL_EVERY ")
-    return normalized.startswith(prefixes)
-
-
 def compute_history(rows: list[dict[str, str]]) -> dict[str, Any]:
     best_keep = 0.0
     consecutive_discards = 0
-    plateau_streak = 0
     completed_runs = 0
     for row in rows:
         status = row.get("status", "")
         val = float(row.get("val_cindex", "0") or 0.0)
-        if status in {"keep", "discard"}:
-            completed_runs += 1
-            if val >= best_keep + MEANINGFUL_IMPROVEMENT:
-                plateau_streak = 0
-            else:
-                plateau_streak += 1
         if status == "keep":
             consecutive_discards = 0
             if val > best_keep:
                 best_keep = val
         elif status == "discard":
             consecutive_discards += 1
+        if status in {"keep", "discard"}:
+            completed_runs += 1
     return {
         "best_keep": best_keep,
         "consecutive_discards": consecutive_discards,
-        "plateau_streak": plateau_streak,
         "completed_runs": completed_runs,
         "total_rows": len(rows),
     }
 
 
-def compute_local_discards_since_last_keep(rows: list[dict[str, str]]) -> int:
-    count = 0
-    for row in reversed(rows):
-        status = row.get("status", "")
-        if status == "keep":
-            break
-        if status in {"discard", "crash"} and is_local_description(row.get("description", "")):
-            count += 1
-    return count
+def get_tried_descriptions() -> set[str]:
+    """Return normalized core descriptions of every experiment ever attempted."""
+    rows = load_results_rows()
+    tried: set[str] = set()
+    for row in rows:
+        desc = row.get("description", "").strip()
+        if not desc:
+            continue
+        core = desc.split(";")[0].strip()
+        if core.startswith("crash: "):
+            core = core[7:]
+        tried.add(core.lower())
+    return tried
+
+
+def desc_is_tried(description: str, tried: set[str]) -> bool:
+    core = description.split(";")[0].strip()
+    if core.startswith("crash: "):
+        core = core[7:]
+    return core.lower() in tried
+
+
+# ---------------------------------------------------------------------------
+# Journal / status helpers
+# ---------------------------------------------------------------------------
 
 
 def next_run_number() -> int:
@@ -199,15 +208,10 @@ def update_status_file(state: dict[str, Any], history: dict[str, Any], note: str
     lines = [
         f"updated_at: {time.strftime('%Y-%m-%d %H:%M:%S')}",
         f"supervisor_pid: {state.get('supervisor_pid', 0)}",
-        f"started_at_epoch: {state.get('started_at_epoch', 0.0)}",
-        f"phase: {state.get('phase', 'local')}",
         f"best_kept_val_cindex: {history['best_keep']:.6f}",
-        f"plateau_streak: {history['plateau_streak']}",
         f"consecutive_discards: {history['consecutive_discards']}",
         f"completed_runs: {history['completed_runs']}",
         f"pending_description: {pending.get('description', 'none')}",
-        f"pending_family: {pending.get('family', 'none')}",
-        f"pending_pid: {pending.get('child_pid', 0)}",
         f"note: {note}",
     ]
     atomic_write_text(STATUS, "\n".join(lines) + "\n")
@@ -215,6 +219,11 @@ def update_status_file(state: dict[str, Any], history: dict[str, Any], note: str
 
 def record_stop_report(message: str) -> None:
     atomic_write_text(STOP_REPORT, message.rstrip() + "\n")
+
+
+# ---------------------------------------------------------------------------
+# String manipulation
+# ---------------------------------------------------------------------------
 
 
 def file_hash(text: str) -> str:
@@ -234,812 +243,1027 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new, 1)
 
 
-def add_retry_tag(text: str, tag: str) -> str:
-    return text.rstrip() + f"\n\n# supervisor_retry_tag: {tag}\n"
+# ---------------------------------------------------------------------------
+# Experiment factory
+# ---------------------------------------------------------------------------
 
 
-def local_experiment(
+def _make_experiment(
     base_text: str,
     *,
-    description: str,
-    hypothesis: str,
-    change: str,
-    patch_fn,
-) -> dict[str, Any]:
-    patched = patch_fn(base_text)
-    return {
-        "kind": "local",
-        "family": "local_tuning",
-        "description": description,
-        "hypothesis": hypothesis,
-        "change": change,
-        "train_text": patched,
-        "train_hash": file_hash(patched),
-        "prefer_simpler_on_tie": False,
-    }
-
-
-def exploration_experiment(
-    base_text: str,
-    *,
+    kind: str,
     family: str,
     description: str,
     hypothesis: str,
     change: str,
     patch_fn,
-    prefer_simpler_on_tie: bool = False,
-    retry_tag: str | None = None,
-) -> dict[str, Any]:
-    patched = patch_fn(base_text)
-    if retry_tag:
-        patched = add_retry_tag(patched, retry_tag)
+    prefer_simpler: bool = False,
+) -> dict[str, Any] | None:
+    """Build an experiment dict.  Returns None if patch_fn raises or is a no-op."""
+    try:
+        patched = patch_fn(base_text)
+    except (ValueError, KeyError, TypeError, IndexError):
+        return None
+    base_h = file_hash(base_text)
+    train_h = file_hash(patched)
+    if train_h == base_h:
+        return None
     return {
-        "kind": "explore",
+        "kind": kind,
         "family": family,
         "description": description,
         "hypothesis": hypothesis,
         "change": change,
         "train_text": patched,
-        "train_hash": file_hash(patched),
-        "prefer_simpler_on_tie": prefer_simpler_on_tie,
+        "train_hash": train_h,
+        "prefer_simpler_on_tie": prefer_simpler,
     }
 
 
-def build_local_queue(base_text: str) -> list[dict[str, Any]]:
-    lr = re.search(r"^LEARNING_RATE = ([0-9.e+-]+)$", base_text, re.MULTILINE)
-    wd = re.search(r"^WEIGHT_DECAY = ([0-9.e+-]+)$", base_text, re.MULTILINE)
-    do = re.search(r"^DROPOUT = ([0-9.e+-]+)$", base_text, re.MULTILINE)
-    ev = re.search(r"^EVAL_EVERY = (\d+)$", base_text, re.MULTILINE)
-    if not all((lr, wd, do, ev)):
-        raise ValueError("could not parse local hyperparameters from kept train.py")
-    lr_v = float(lr.group(1))
-    wd_v = float(wd.group(1))
-    do_v = float(do.group(1))
-    ev_v = int(ev.group(1))
+# ---------------------------------------------------------------------------
+# Parse current hyperparameters from base text
+# ---------------------------------------------------------------------------
 
-    queue = [
-        local_experiment(
-            base_text,
-            description=f"LEARNING_RATE {lr_v} -> {lr_v - 0.000025:.6f}",
-            hypothesis="A slightly smaller step size may refine the same early optimum without leaving the current local basin.",
-            change=f"`LEARNING_RATE` `{lr_v}` -> `{lr_v - 0.000025:.6f}`.",
-            patch_fn=lambda t: replace_assignment(t, "LEARNING_RATE", repr(round(lr_v - 0.000025, 8))),
+
+def _parse_float(text: str, name: str) -> float | None:
+    m = re.search(rf"^{name}\s*=\s*([0-9eE.+-]+)", text, re.MULTILINE)
+    return float(m.group(1)) if m else None
+
+
+def _parse_int(text: str, name: str) -> int | None:
+    m = re.search(rf"^{name}\s*=\s*(\d+)", text, re.MULTILINE)
+    return int(m.group(1)) if m else None
+
+
+def _parse_tuple(text: str, name: str) -> str | None:
+    m = re.search(rf"^{name}\s*=\s*(\(.+?\))", text, re.MULTILINE)
+    return m.group(1) if m else None
+
+
+# ---------------------------------------------------------------------------
+# Experiment generators — hyperparameter perturbations
+# ---------------------------------------------------------------------------
+
+
+def gen_hp_experiments(base_text: str, tried: set[str]) -> list[dict[str, Any]]:
+    experiments: list[dict[str, Any]] = []
+    lr = _parse_float(base_text, "LEARNING_RATE")
+    wd = _parse_float(base_text, "WEIGHT_DECAY")
+    do = _parse_float(base_text, "DROPOUT")
+    ev = _parse_int(base_text, "EVAL_EVERY")
+    pat = _parse_int(base_text, "EARLY_STOP_PATIENCE_EVALS")
+    seed = _parse_int(base_text, "SEED")
+
+    if lr is not None:
+        for factor in [0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.95, 1.05, 1.1, 1.15, 1.2, 1.3, 1.5, 2.0]:
+            new_lr = round(lr * factor, 8)
+            if new_lr == lr or new_lr <= 0:
+                continue
+            desc = f"LEARNING_RATE {lr} -> {new_lr}"
+            if desc_is_tried(desc, tried):
+                continue
+            exp = _make_experiment(
+                base_text, kind="local", family="lr_tuning", description=desc,
+                hypothesis=f"LR scaled by {factor}x may find a better training basin.",
+                change=f"LEARNING_RATE {lr} -> {new_lr}",
+                patch_fn=lambda t, v=new_lr: replace_assignment(t, "LEARNING_RATE", repr(v)),
+            )
+            if exp:
+                experiments.append(exp)
+
+    if wd is not None:
+        for factor in [0.0, 0.3, 0.5, 0.7, 0.8, 1.2, 1.5, 2.0, 3.0, 5.0]:
+            new_wd = round(wd * factor, 8) if factor > 0 else 0.0
+            if new_wd == wd:
+                continue
+            desc = f"WEIGHT_DECAY {wd} -> {new_wd}"
+            if desc_is_tried(desc, tried):
+                continue
+            exp = _make_experiment(
+                base_text, kind="local", family="wd_tuning", description=desc,
+                hypothesis=f"Weight decay scaled by {factor}x may regularize better.",
+                change=f"WEIGHT_DECAY {wd} -> {new_wd}",
+                patch_fn=lambda t, v=new_wd: replace_assignment(t, "WEIGHT_DECAY", repr(v)),
+            )
+            if exp:
+                experiments.append(exp)
+
+    if do is not None:
+        for new_do in [0.0, 0.01, 0.02, 0.03, 0.04, 0.06, 0.07, 0.08, 0.1, 0.12, 0.15, 0.2]:
+            if new_do == do:
+                continue
+            desc = f"DROPOUT {do} -> {new_do}"
+            if desc_is_tried(desc, tried):
+                continue
+            exp = _make_experiment(
+                base_text, kind="local", family="dropout_tuning", description=desc,
+                hypothesis=f"Dropout {new_do} may regularize the residual head differently.",
+                change=f"DROPOUT {do} -> {new_do}",
+                patch_fn=lambda t, v=new_do: replace_assignment(t, "DROPOUT", repr(v)),
+            )
+            if exp:
+                experiments.append(exp)
+
+    if ev is not None:
+        for new_ev in [10, 15, 20, 25, 30, 35, 40, 45, 55, 60, 75, 100]:
+            if new_ev == ev:
+                continue
+            desc = f"EVAL_EVERY {ev} -> {new_ev}"
+            if desc_is_tried(desc, tried):
+                continue
+            exp = _make_experiment(
+                base_text, kind="local", family="eval_grid", description=desc,
+                hypothesis=f"Eval spacing {new_ev} may capture the true val peak better.",
+                change=f"EVAL_EVERY {ev} -> {new_ev}",
+                patch_fn=lambda t, v=new_ev: replace_assignment(t, "EVAL_EVERY", str(v)),
+            )
+            if exp:
+                experiments.append(exp)
+
+    if pat is not None:
+        for new_pat in [2, 4, 5, 6, 8, 10]:
+            if new_pat == pat:
+                continue
+            desc = f"EARLY_STOP_PATIENCE_EVALS {pat} -> {new_pat}"
+            if desc_is_tried(desc, tried):
+                continue
+            exp = _make_experiment(
+                base_text, kind="local", family="patience_tuning", description=desc,
+                hypothesis=f"Patience {new_pat} may allow the model to train longer or stop sooner.",
+                change=f"EARLY_STOP_PATIENCE_EVALS {pat} -> {new_pat}",
+                patch_fn=lambda t, v=new_pat: replace_assignment(t, "EARLY_STOP_PATIENCE_EVALS", str(v)),
+            )
+            if exp:
+                experiments.append(exp)
+
+    if seed is not None:
+        for new_seed in [43, 44, 7, 137, 2024, 123, 999, 314]:
+            if new_seed == seed:
+                continue
+            desc = f"SEED {seed} -> {new_seed}"
+            if desc_is_tried(desc, tried):
+                continue
+            exp = _make_experiment(
+                base_text, kind="explore", family="seed_robustness", description=desc,
+                hypothesis=f"Seed {new_seed} may find a materially different training basin.",
+                change=f"SEED {seed} -> {new_seed}",
+                patch_fn=lambda t, v=new_seed: replace_assignment(t, "SEED", str(v)),
+            )
+            if exp:
+                experiments.append(exp)
+
+    return experiments
+
+
+# ---------------------------------------------------------------------------
+# Experiment generators — architecture changes
+# ---------------------------------------------------------------------------
+
+
+def gen_architecture_experiments(base_text: str, tried: set[str]) -> list[dict[str, Any]]:
+    experiments: list[dict[str, Any]] = []
+    current_hs = _parse_tuple(base_text, "HIDDEN_SIZES")
+
+    candidates = [
+        ("(8,)", "Narrow residual MLP (8,)"),
+        ("(24,)", "Wider residual MLP (24,)"),
+        ("(32,)", "Wider residual MLP (32,)"),
+        ("(48,)", "Wider residual MLP (48,)"),
+        ("(64,)", "Wider residual MLP (64,)"),
+        ("(128,)", "Wide residual MLP (128,)"),
+        ("(32, 16)", "Two-layer residual MLP (32, 16)"),
+        ("(24, 12)", "Two-layer residual MLP (24, 12)"),
+        ("(16, 8)", "Two-layer residual MLP (16, 8)"),
+        ("(24, 16)", "Two-layer residual MLP (24, 16)"),
+        ("(32, 16, 8)", "Three-layer residual MLP (32, 16, 8)"),
+        ("(48, 24)", "Two-layer residual MLP (48, 24)"),
+        ("(64, 32)", "Two-layer residual MLP (64, 32)"),
+    ]
+    for new_hs, desc in candidates:
+        if current_hs and new_hs == current_hs:
+            continue
+        if desc_is_tried(desc, tried):
+            continue
+        exp = _make_experiment(
+            base_text, kind="explore", family="architecture_width",
+            description=desc,
+            hypothesis=f"Changing residual MLP to {new_hs} may improve capacity/regularization balance.",
+            change=f"HIDDEN_SIZES {current_hs} -> {new_hs}",
+            patch_fn=lambda t, v=new_hs: replace_assignment(t, "HIDDEN_SIZES", v),
+        )
+        if exp:
+            experiments.append(exp)
+
+    return experiments
+
+
+# ---------------------------------------------------------------------------
+# Experiment generators — activation functions
+# ---------------------------------------------------------------------------
+
+
+def gen_activation_experiments(base_text: str, tried: set[str]) -> list[dict[str, Any]]:
+    experiments: list[dict[str, Any]] = []
+    if "nn.GELU()" not in base_text:
+        return experiments
+
+    activations = [
+        ("nn.SiLU()", "SiLU"),
+        ("nn.ELU()", "ELU"),
+        ("nn.Mish()", "Mish"),
+        ("nn.LeakyReLU()", "LeakyReLU"),
+        ("nn.Tanh()", "Tanh"),
+        ("nn.ReLU()", "ReLU"),
+    ]
+    for act_code, act_name in activations:
+        desc = f"Residual activation GELU -> {act_name}"
+        if desc_is_tried(desc, tried):
+            continue
+        exp = _make_experiment(
+            base_text, kind="explore", family="activation",
+            description=desc,
+            hypothesis=f"{act_name} may provide better gradient flow for the residual correction path.",
+            change=f"Replace nn.GELU() with {act_code} in residual head.",
+            patch_fn=lambda t, a=act_code: replace_once(t, "nn.GELU()", a, "activation"),
+        )
+        if exp:
+            experiments.append(exp)
+
+    return experiments
+
+
+# ---------------------------------------------------------------------------
+# Experiment generators — optimizer changes
+# ---------------------------------------------------------------------------
+
+
+def gen_optimizer_experiments(base_text: str, tried: set[str]) -> list[dict[str, Any]]:
+    experiments: list[dict[str, Any]] = []
+    adamw_line = "    optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)"
+    if adamw_line not in base_text:
+        return experiments
+
+    opt_changes = [
+        (
+            "AdamW with amsgrad",
+            "    optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY, amsgrad=True)",
+            "amsgrad may help stabilize the training trajectory.",
         ),
-        local_experiment(
-            base_text,
-            description=f"LEARNING_RATE {lr_v} -> {lr_v + 0.000025:.6f}",
-            hypothesis="A very small upward LR nudge may sharpen the early ranking peak while staying closer than the previously discarded 0.00205 move.",
-            change=f"`LEARNING_RATE` `{lr_v}` -> `{lr_v + 0.000025:.6f}`.",
-            patch_fn=lambda t: replace_assignment(t, "LEARNING_RATE", repr(round(lr_v + 0.000025, 8))),
+        (
+            "AdamW beta2=0.98",
+            "    optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY, betas=(0.9, 0.98))",
+            "Faster second-moment decay may reduce over-adaptation to early noisy gradients.",
         ),
-        local_experiment(
-            base_text,
-            description=f"WEIGHT_DECAY {wd_v} -> {wd_v - 0.000005:.8f}",
-            hypothesis="A narrower weight-decay move may preserve the current optimum while slightly relaxing regularization around the best kept setup.",
-            change=f"`WEIGHT_DECAY` `{wd_v}` -> `{wd_v - 0.000005:.8f}`.",
-            patch_fn=lambda t: replace_assignment(t, "WEIGHT_DECAY", repr(round(wd_v - 0.000005, 8))),
+        (
+            "AdamW beta2=0.95",
+            "    optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY, betas=(0.9, 0.95))",
+            "Aggressive second-moment decay may help in the low-data regime.",
         ),
-        local_experiment(
-            base_text,
-            description=f"WEIGHT_DECAY {wd_v} -> {wd_v + 0.000005:.8f}",
-            hypothesis="A slightly stronger weight decay may still help the current architecture if the earlier 4 percent move was too coarse.",
-            change=f"`WEIGHT_DECAY` `{wd_v}` -> `{wd_v + 0.000005:.8f}`.",
-            patch_fn=lambda t: replace_assignment(t, "WEIGHT_DECAY", repr(round(wd_v + 0.000005, 8))),
+        (
+            "SGD with momentum 0.9",
+            "    optimizer = torch.optim.SGD(model.parameters(), lr=LEARNING_RATE, momentum=0.9, weight_decay=WEIGHT_DECAY)",
+            "SGD with momentum may generalize differently than adaptive methods.",
         ),
-        local_experiment(
-            base_text,
-            description=f"DROPOUT {do_v} -> {do_v - 0.005:.3f}",
-            hypothesis="A slightly lighter dropout could recover some capacity without revisiting the much larger discarded regularization changes.",
-            change=f"`DROPOUT` `{do_v}` -> `{do_v - 0.005:.3f}`.",
-            patch_fn=lambda t: replace_assignment(t, "DROPOUT", repr(round(do_v - 0.005, 3))),
-        ),
-        local_experiment(
-            base_text,
-            description=f"EVAL_EVERY {ev_v} -> {ev_v + 5}",
-            hypothesis="A tiny shift in checkpoint spacing may better align with the early peak than the previous coarse eval-grid moves.",
-            change=f"`EVAL_EVERY` `{ev_v}` -> `{ev_v + 5}`.",
-            patch_fn=lambda t: replace_assignment(t, "EVAL_EVERY", str(ev_v + 5)),
+        (
+            "AdamW beta1=0.85",
+            "    optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY, betas=(0.85, 0.999))",
+            "Lower beta1 may help escape local minima by reducing momentum smoothing.",
         ),
     ]
 
-    deduped: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    base_hash = file_hash(base_text)
-    for experiment in queue:
-        train_hash = experiment["train_hash"]
-        if train_hash == base_hash or train_hash in seen:
+    for desc, new_line, hyp in opt_changes:
+        if desc_is_tried(desc, tried):
             continue
-        seen.add(train_hash)
-        deduped.append(experiment)
+        exp = _make_experiment(
+            base_text, kind="explore", family="optimizer",
+            description=desc, hypothesis=hyp,
+            change=f"Replace optimizer line with: {desc}",
+            patch_fn=lambda t, nl=new_line: replace_once(t, adamw_line, nl, "optimizer"),
+        )
+        if exp:
+            experiments.append(exp)
+
+    return experiments
+
+
+# ---------------------------------------------------------------------------
+# Experiment generators — training dynamics
+# ---------------------------------------------------------------------------
+
+
+def gen_training_dynamics_experiments(base_text: str, tried: set[str]) -> list[dict[str, Any]]:
+    experiments: list[dict[str, Any]] = []
+
+    # Gradient clipping
+    backward_line = "        loss.backward()\n        optimizer.step()"
+    if backward_line in base_text:
+        desc = "Gradient clipping max_norm=1.0"
+        if not desc_is_tried(desc, tried):
+            exp = _make_experiment(
+                base_text, kind="explore", family="training_dynamics",
+                description=desc,
+                hypothesis="Gradient clipping may prevent sharp early steps that overshoot the optimum.",
+                change="Add torch.nn.utils.clip_grad_norm_ between backward and step.",
+                patch_fn=lambda t: replace_once(
+                    t, backward_line,
+                    "        loss.backward()\n"
+                    "        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)\n"
+                    "        optimizer.step()",
+                    "grad_clip",
+                ),
+            )
+            if exp:
+                experiments.append(exp)
+
+        desc = "Gradient clipping max_norm=0.5"
+        if not desc_is_tried(desc, tried):
+            exp = _make_experiment(
+                base_text, kind="explore", family="training_dynamics",
+                description=desc,
+                hypothesis="Tighter gradient clipping may further stabilize the early training phase.",
+                change="Add torch.nn.utils.clip_grad_norm_(max_norm=0.5) between backward and step.",
+                patch_fn=lambda t: replace_once(
+                    t, backward_line,
+                    "        loss.backward()\n"
+                    "        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.5)\n"
+                    "        optimizer.step()",
+                    "grad_clip_tight",
+                ),
+            )
+            if exp:
+                experiments.append(exp)
+
+    # LR warmup + cosine decay
+    opt_create = "    optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)\n"
+    if opt_create in base_text:
+        desc = "Cosine LR schedule"
+        if not desc_is_tried(desc, tried):
+            new_opt = (
+                "    optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)\n"
+                "    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=800, eta_min=LEARNING_RATE * 0.1)\n"
+            )
+            step_old = "        optimizer.step()\n"
+            step_new = "        optimizer.step()\n        scheduler.step()\n"
+
+            def patch_cosine(t: str) -> str:
+                t = replace_once(t, opt_create, new_opt, "cosine_opt")
+                return replace_once(t, step_old, step_new, "cosine_step")
+
+            exp = _make_experiment(
+                base_text, kind="explore", family="lr_schedule",
+                description=desc,
+                hypothesis="Cosine decay may prevent overfitting by reducing LR as training progresses.",
+                change="Add CosineAnnealingLR scheduler with T_max=800.",
+                patch_fn=patch_cosine,
+            )
+            if exp:
+                experiments.append(exp)
+
+        desc = "Linear warmup 100 steps + cosine decay"
+        if not desc_is_tried(desc, tried):
+            new_opt = (
+                "    optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)\n"
+                "    warmup_steps = 100\n"
+                "    cosine_sched = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=800, eta_min=LEARNING_RATE * 0.1)\n"
+                "    warmup_sched = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=0.1, total_iters=warmup_steps)\n"
+                "    scheduler = torch.optim.lr_scheduler.SequentialLR(optimizer, schedulers=[warmup_sched, cosine_sched], milestones=[warmup_steps])\n"
+            )
+            step_old = "        optimizer.step()\n"
+            step_new = "        optimizer.step()\n        scheduler.step()\n"
+
+            def patch_warmup_cosine(t: str) -> str:
+                t = replace_once(t, opt_create, new_opt, "warmup_cosine_opt")
+                return replace_once(t, step_old, step_new, "warmup_cosine_step")
+
+            exp = _make_experiment(
+                base_text, kind="explore", family="lr_schedule",
+                description=desc,
+                hypothesis="Warmup prevents early instability; cosine decay prevents late overfitting.",
+                change="Add LinearLR warmup for 100 steps, then CosineAnnealingLR.",
+                patch_fn=patch_warmup_cosine,
+            )
+            if exp:
+                experiments.append(exp)
+
+    return experiments
+
+
+# ---------------------------------------------------------------------------
+# Experiment generators — loss function
+# ---------------------------------------------------------------------------
+
+
+def gen_loss_experiments(base_text: str, tried: set[str]) -> list[dict[str, Any]]:
+    experiments: list[dict[str, Any]] = []
+    cox_fn = (
+        "def cox_partial_loss(risk_scores: torch.Tensor, times: torch.Tensor, events: torch.Tensor) -> torch.Tensor:\n"
+        "    order = torch.argsort(times, descending=True)\n"
+        "    ordered_scores = risk_scores[order]\n"
+        "    ordered_events = events[order]\n"
+        "    log_risk = torch.logcumsumexp(ordered_scores, dim=0)\n"
+        "    event_count = ordered_events.sum().clamp_min(1.0)\n"
+        "    losses = -(ordered_scores - log_risk) * ordered_events\n"
+        "    return losses.sum() / event_count\n"
+    )
+    if cox_fn not in base_text:
+        return experiments
+
+    # Time-weighted Cox
+    desc = "Time-weighted Cox loss (power=0.35)"
+    if not desc_is_tried(desc, tried):
+        weighted_cox = (
+            "def cox_partial_loss(risk_scores: torch.Tensor, times: torch.Tensor, events: torch.Tensor) -> torch.Tensor:\n"
+            "    order = torch.argsort(times, descending=True)\n"
+            "    ordered_scores = risk_scores[order]\n"
+            "    ordered_times = times[order]\n"
+            "    ordered_events = events[order]\n"
+            "    log_risk = torch.logcumsumexp(ordered_scores, dim=0)\n"
+            "    base_losses = -(ordered_scores - log_risk) * ordered_events\n"
+            "    safe_times = ordered_times.clamp_min(1.0)\n"
+            "    event_weights = torch.where(\n"
+            "        ordered_events > 0,\n"
+            "        (safe_times.mean() / safe_times).pow(0.35),\n"
+            "        torch.ones_like(safe_times),\n"
+            "    )\n"
+            "    weighted_events = ordered_events * event_weights\n"
+            "    normalizer = weighted_events.sum().clamp_min(1.0)\n"
+            "    return (base_losses * event_weights).sum() / normalizer\n"
+        )
+        exp = _make_experiment(
+            base_text, kind="explore", family="loss_design",
+            description=desc,
+            hypothesis="Upweighting earlier events may improve ranking of the most informative survival pairs.",
+            change="Replace uniform Cox loss with time-weighted variant.",
+            patch_fn=lambda t: replace_once(t, cox_fn, weighted_cox, "weighted_cox"),
+        )
+        if exp:
+            experiments.append(exp)
+
+    # Cox + L1 regularization on residual correction
+    desc = "Cox loss + L1 penalty on residual output"
+    if not desc_is_tried(desc, tried):
+        loss_line = "        loss = cox_partial_loss(risk_scores, train_times, train_events)"
+        new_loss = (
+            "        loss = cox_partial_loss(risk_scores, train_times, train_events)\n"
+            "        loss = loss + 1e-4 * risk_scores.abs().mean()"
+        )
+        if loss_line in base_text:
+            exp = _make_experiment(
+                base_text, kind="explore", family="loss_design",
+                description=desc,
+                hypothesis="L1 penalty on risk scores may compress the learned scale and reduce overfitting.",
+                change="Add L1 regularization on model output to Cox loss.",
+                patch_fn=lambda t: replace_once(t, loss_line, new_loss, "l1_loss"),
+            )
+            if exp:
+                experiments.append(exp)
+
+    return experiments
+
+
+# ---------------------------------------------------------------------------
+# Experiment generators — feature representation
+# ---------------------------------------------------------------------------
+
+
+def gen_feature_experiments(base_text: str, tried: set[str]) -> list[dict[str, Any]]:
+    experiments: list[dict[str, Any]] = []
+
+    # Remove interaction features
+    interaction_block = (
+        "                amp * rdw,\n"
+        "                sgp * log_crp,\n"
+        "                wbc * log_crp,\n"
+        "                lymph * rdw,\n"
+        "                alk * rdw,\n"
+        "                cep * log_crp,\n"
+    )
+    if interaction_block in base_text and "self.output_dim = 16" in base_text:
+        desc = "Remove interaction features (10 inputs only)"
+        if not desc_is_tried(desc, tried):
+            def patch_remove_interactions(t: str) -> str:
+                t = replace_once(t, "        self.output_dim = 16", "        self.output_dim = 10", "remove_int_dim")
+                return replace_once(t, interaction_block, "", "remove_int_features")
+
+            exp = _make_experiment(
+                base_text, kind="explore", family="feature_representation",
+                description=desc,
+                hypothesis="Interaction features may be adding noise; raw biomarkers + pheno_xb may suffice.",
+                change="Remove 6 interaction features, keep 9 raw + pheno_no_age_xb.",
+                patch_fn=patch_remove_interactions,
+                prefer_simpler=True,
+            )
+            if exp:
+                experiments.append(exp)
+
+    # Different interaction set: squares instead of products
+    if interaction_block in base_text and "self.output_dim = 16" in base_text:
+        desc = "Replace product interactions with squared features"
+        if not desc_is_tried(desc, tried):
+            square_block = (
+                "                amp * amp,\n"
+                "                log_crp * log_crp,\n"
+                "                rdw * rdw,\n"
+                "                wbc * wbc,\n"
+                "                lymph * lymph,\n"
+                "                alk * alk,\n"
+            )
+
+            exp = _make_experiment(
+                base_text, kind="explore", family="feature_representation",
+                description=desc,
+                hypothesis="Squared terms may capture nonlinear biomarker effects more directly.",
+                change="Replace 6 product interactions with 6 squared features.",
+                patch_fn=lambda t: replace_once(t, interaction_block, square_block, "square_features"),
+            )
+            if exp:
+                experiments.append(exp)
+
+    # Add ratio features
+    if interaction_block in base_text and "self.output_dim = 16" in base_text:
+        desc = "Add ratio features (22 inputs total)"
+        if not desc_is_tried(desc, tried):
+            extended_block = (
+                "                amp * rdw,\n"
+                "                sgp * log_crp,\n"
+                "                wbc * log_crp,\n"
+                "                lymph * rdw,\n"
+                "                alk * rdw,\n"
+                "                cep * log_crp,\n"
+                "                amp / cep.clamp_min(1e-6),\n"
+                "                wbc / lymph.clamp_min(1e-6),\n"
+                "                rdw / mcv.clamp_min(1e-6),\n"
+                "                sgp / amp.clamp_min(1e-6),\n"
+                "                alk / amp.clamp_min(1e-6),\n"
+                "                torch.log1p(alk.clamp_min(0.0)),\n"
+            )
+
+            def patch_ratio(t: str) -> str:
+                t = replace_once(t, "        self.output_dim = 16", "        self.output_dim = 22", "ratio_dim")
+                return replace_once(t, interaction_block, extended_block, "ratio_features")
+
+            exp = _make_experiment(
+                base_text, kind="explore", family="feature_representation",
+                description=desc,
+                hypothesis="Biomarker ratios may capture clinically meaningful relationships.",
+                change="Add 6 ratio/log features to existing 16 encoder features.",
+                patch_fn=patch_ratio,
+            )
+            if exp:
+                experiments.append(exp)
+
+    # Remove linear skip path
+    if "self.linear_skip = nn.Linear(input_dim, 1)" in base_text:
+        desc = "Remove linear skip path"
+        if not desc_is_tried(desc, tried):
+            def patch_remove_skip(t: str) -> str:
+                t = replace_once(
+                    t,
+                    "        self.linear_scale = nn.Parameter(torch.tensor(0.05, dtype=torch.float32))\n"
+                    "        self.linear_skip = nn.Linear(input_dim, 1)",
+                    "",
+                    "remove_skip_params",
+                )
+                t = replace_once(
+                    t,
+                    "        linear_skip = self.linear_skip(standardized).squeeze(-1)\n"
+                    "        return self.base_weight * base_score + self.residual_scale * residual + self.linear_scale * linear_skip",
+                    "        return self.base_weight * base_score + self.residual_scale * residual",
+                    "remove_skip_forward",
+                )
+                return t
+
+            exp = _make_experiment(
+                base_text, kind="explore", family="architecture_simplify",
+                description=desc,
+                hypothesis="The linear skip may be redundant with the MLP path; removing it simplifies the model.",
+                change="Remove linear_skip and linear_scale from the model.",
+                patch_fn=patch_remove_skip,
+                prefer_simpler=True,
+            )
+            if exp:
+                experiments.append(exp)
+
+    # Add quadratic skip
+    if ("self.linear_skip = nn.Linear(input_dim, 1)" in base_text
+            and "quadratic" not in base_text):
+        desc = "Add quadratic skip correction"
+        if not desc_is_tried(desc, tried):
+            def patch_quadratic(t: str) -> str:
+                t = replace_once(
+                    t,
+                    "        self.linear_skip = nn.Linear(input_dim, 1)",
+                    "        self.linear_skip = nn.Linear(input_dim, 1)\n"
+                    "        self.quadratic_scale = nn.Parameter(torch.tensor(0.02, dtype=torch.float32))\n"
+                    "        self.quadratic_skip = nn.Linear(input_dim, 1, bias=False)",
+                    "quad_params",
+                )
+                t = replace_once(
+                    t,
+                    "        return self.base_weight * base_score + self.residual_scale * residual + self.linear_scale * linear_skip",
+                    "        quadratic_skip = self.quadratic_skip(standardized.square()).squeeze(-1)\n"
+                    "        return self.base_weight * base_score + self.residual_scale * residual + self.linear_scale * linear_skip + self.quadratic_scale * quadratic_skip",
+                    "quad_forward",
+                )
+                return t
+
+            exp = _make_experiment(
+                base_text, kind="explore", family="architecture_quadratic",
+                description=desc,
+                hypothesis="A quadratic path may capture second-order biomarker effects cheaply.",
+                change="Add a lightweight quadratic skip correction path.",
+                patch_fn=patch_quadratic,
+            )
+            if exp:
+                experiments.append(exp)
+
+    return experiments
+
+
+# ---------------------------------------------------------------------------
+# Experiment generators — normalization
+# ---------------------------------------------------------------------------
+
+
+def gen_normalization_experiments(base_text: str, tried: set[str]) -> list[dict[str, Any]]:
+    experiments: list[dict[str, Any]] = []
+    layers_block = "        layers: list[nn.Module] = []\n        last_dim = input_dim\n"
+
+    if layers_block not in base_text:
+        return experiments
+
+    # LayerNorm on input
+    desc = "LayerNorm on encoder features before residual head"
+    if not desc_is_tried(desc, tried):
+        new_block = (
+            "        self.input_norm = nn.LayerNorm(input_dim)\n"
+            "        layers: list[nn.Module] = []\n"
+            "        last_dim = input_dim\n"
+        )
+        fwd_old = "        residual = self.residual_head(standardized).squeeze(-1)"
+        fwd_new = "        normed = self.input_norm(standardized)\n        residual = self.residual_head(normed).squeeze(-1)"
+
+        def patch_layernorm(t: str) -> str:
+            t = replace_once(t, layers_block, new_block, "layernorm_init")
+            return replace_once(t, fwd_old, fwd_new, "layernorm_forward")
+
+        exp = _make_experiment(
+            base_text, kind="explore", family="normalization",
+            description=desc,
+            hypothesis="LayerNorm may stabilize the residual head input distribution across biomarker scales.",
+            change="Add LayerNorm before the residual MLP.",
+            patch_fn=patch_layernorm,
+        )
+        if exp:
+            experiments.append(exp)
+
+    # BatchNorm after first hidden layer
+    desc = "BatchNorm1d after first hidden layer"
+    if not desc_is_tried(desc, tried):
+        old_loop = (
+            "            layers.append(nn.Linear(last_dim, hidden_dim))\n"
+            "            layers.append(nn.GELU())\n"
+        )
+        new_loop = (
+            "            layers.append(nn.Linear(last_dim, hidden_dim))\n"
+            "            layers.append(nn.BatchNorm1d(hidden_dim))\n"
+            "            layers.append(nn.GELU())\n"
+        )
+        if old_loop in base_text:
+            exp = _make_experiment(
+                base_text, kind="explore", family="normalization",
+                description=desc,
+                hypothesis="BatchNorm may reduce internal covariate shift and speed up convergence.",
+                change="Add BatchNorm1d after each hidden Linear layer.",
+                patch_fn=lambda t: replace_once(t, old_loop, new_loop, "batchnorm"),
+            )
+            if exp:
+                experiments.append(exp)
+
+    return experiments
+
+
+# ---------------------------------------------------------------------------
+# Experiment generators — regularization
+# ---------------------------------------------------------------------------
+
+
+def gen_regularization_experiments(base_text: str, tried: set[str]) -> list[dict[str, Any]]:
+    experiments: list[dict[str, Any]] = []
+
+    # Feature noise during training
+    std_line = "        standardized = (encoded - self.feature_mean) / self.feature_std"
+    if std_line in base_text and "randn_like" not in base_text:
+        for noise_std in [0.01, 0.03, 0.05, 0.1]:
+            desc = f"Feature noise std={noise_std} during training"
+            if desc_is_tried(desc, tried):
+                continue
+            new_std = (
+                f"        standardized = (encoded - self.feature_mean) / self.feature_std\n"
+                f"        if self.training:\n"
+                f"            standardized = standardized + {noise_std} * torch.randn_like(standardized)"
+            )
+            exp = _make_experiment(
+                base_text, kind="explore", family="regularization",
+                description=desc,
+                hypothesis=f"Input noise (std={noise_std}) may regularize the model against overfitting to specific biomarker values.",
+                change=f"Add Gaussian noise (std={noise_std}) to standardized features during training.",
+                patch_fn=lambda t, ns=new_std: replace_once(t, std_line, ns, "feature_noise"),
+            )
+            if exp:
+                experiments.append(exp)
+
+    # Feature gate
+    if "feature_gate" not in base_text and "self.linear_skip = nn.Linear(input_dim, 1)" in base_text:
+        desc = "Learned feature gate (sigmoid)"
+        if not desc_is_tried(desc, tried):
+            def patch_gate(t: str) -> str:
+                t = replace_once(
+                    t,
+                    "        self.linear_skip = nn.Linear(input_dim, 1)",
+                    "        self.linear_skip = nn.Linear(input_dim, 1)\n"
+                    "        self.feature_gate = nn.Parameter(torch.zeros(input_dim, dtype=torch.float32))",
+                    "gate_param",
+                )
+                t = replace_once(
+                    t,
+                    "        standardized = (encoded - self.feature_mean) / self.feature_std\n"
+                    "        residual = self.residual_head(standardized).squeeze(-1)\n"
+                    "        linear_skip = self.linear_skip(standardized).squeeze(-1)",
+                    "        standardized = (encoded - self.feature_mean) / self.feature_std\n"
+                    "        gated = standardized * torch.sigmoid(self.feature_gate)\n"
+                    "        residual = self.residual_head(gated).squeeze(-1)\n"
+                    "        linear_skip = self.linear_skip(gated).squeeze(-1)",
+                    "gate_forward",
+                )
+                return t
+
+            exp = _make_experiment(
+                base_text, kind="explore", family="regularization",
+                description=desc,
+                hypothesis="A learned feature gate may suppress noisy encoder channels.",
+                change="Add sigmoid feature gate on standardized features.",
+                patch_fn=patch_gate,
+            )
+            if exp:
+                experiments.append(exp)
+
+    # Fix anchor weight
+    if "self.base_weight = nn.Parameter" in base_text:
+        desc = "Fix base anchor weight at 1.0"
+        if not desc_is_tried(desc, tried):
+            def patch_fix_anchor(t: str) -> str:
+                return replace_once(
+                    t,
+                    '        self.base_weight = nn.Parameter(torch.tensor(1.0, dtype=torch.float32))',
+                    '        self.register_buffer("base_weight", torch.tensor(1.0, dtype=torch.float32))',
+                    "fix_anchor",
+                )
+
+            exp = _make_experiment(
+                base_text, kind="explore", family="anchor_design",
+                description=desc,
+                hypothesis="Fixing the anchor weight may prevent co-adaptation between base and residual.",
+                change="Replace learned base_weight with fixed buffer of 1.0.",
+                patch_fn=patch_fix_anchor,
+                prefer_simpler=True,
+            )
+            if exp:
+                experiments.append(exp)
+
+    return experiments
+
+
+# ---------------------------------------------------------------------------
+# Experiment generators — scale/init
+# ---------------------------------------------------------------------------
+
+
+def gen_scale_experiments(base_text: str, tried: set[str]) -> list[dict[str, Any]]:
+    experiments: list[dict[str, Any]] = []
+
+    for param, values in [
+        ("residual_scale", [0.01, 0.03, 0.05, 0.08, 0.15, 0.2, 0.3]),
+        ("linear_scale", [0.01, 0.02, 0.08, 0.1, 0.15]),
+    ]:
+        old_pattern = f'self.{param} = nn.Parameter(torch.tensor('
+        m = re.search(rf'self\.{param} = nn\.Parameter\(torch\.tensor\(([0-9.]+)', base_text)
+        if not m:
+            continue
+        current = float(m.group(1))
+        for new_val in values:
+            if new_val == current:
+                continue
+            desc = f"Init {param} {current} -> {new_val}"
+            if desc_is_tried(desc, tried):
+                continue
+
+            old_str = f'self.{param} = nn.Parameter(torch.tensor({current}, dtype=torch.float32))'
+            new_str = f'self.{param} = nn.Parameter(torch.tensor({new_val}, dtype=torch.float32))'
+
+            exp = _make_experiment(
+                base_text, kind="explore", family="init_scale",
+                description=desc,
+                hypothesis=f"Changing {param} init from {current} to {new_val} may shift the balance between anchor and correction.",
+                change=f"{param} initial value {current} -> {new_val}.",
+                patch_fn=lambda t, o=old_str, n=new_str: replace_once(t, o, n, f"{param}_init"),
+            )
+            if exp:
+                experiments.append(exp)
+
+    return experiments
+
+
+# ---------------------------------------------------------------------------
+# Experiment generators — combined promising changes
+# ---------------------------------------------------------------------------
+
+
+def gen_combined_experiments(base_text: str, tried: set[str]) -> list[dict[str, Any]]:
+    experiments: list[dict[str, Any]] = []
+
+    # SiLU + wider (32,)
+    if "nn.GELU()" in base_text:
+        desc = "SiLU activation + wider MLP (32,)"
+        if not desc_is_tried(desc, tried):
+            def patch_silu_wider(t: str) -> str:
+                t = replace_once(t, "nn.GELU()", "nn.SiLU()", "silu_act")
+                return replace_assignment(t, "HIDDEN_SIZES", "(32,)")
+
+            exp = _make_experiment(
+                base_text, kind="explore", family="combined",
+                description=desc,
+                hypothesis="SiLU was the best-scoring discard and wider MLPs help; combining them may exceed either alone.",
+                change="Switch to SiLU and widen residual MLP to (32,).",
+                patch_fn=patch_silu_wider,
+            )
+            if exp:
+                experiments.append(exp)
+
+        desc = "SiLU activation + wider MLP (48,)"
+        if not desc_is_tried(desc, tried):
+            def patch_silu_48(t: str) -> str:
+                t = replace_once(t, "nn.GELU()", "nn.SiLU()", "silu_act")
+                return replace_assignment(t, "HIDDEN_SIZES", "(48,)")
+
+            exp = _make_experiment(
+                base_text, kind="explore", family="combined",
+                description=desc,
+                hypothesis="SiLU + larger capacity may discover a stronger correction path.",
+                change="Switch to SiLU and widen residual MLP to (48,).",
+                patch_fn=patch_silu_48,
+            )
+            if exp:
+                experiments.append(exp)
+
+    # Wider MLP + higher dropout
+    desc = "Wider MLP (32,) + dropout 0.1"
+    if not desc_is_tried(desc, tried):
+        def patch_wider_dropout(t: str) -> str:
+            t = replace_assignment(t, "HIDDEN_SIZES", "(32,)")
+            return replace_assignment(t, "DROPOUT", "0.1")
+
+        exp = _make_experiment(
+            base_text, kind="explore", family="combined",
+            description=desc,
+            hypothesis="More capacity with stronger regularization may improve generalization.",
+            change="Widen to (32,) and increase dropout to 0.1.",
+            patch_fn=patch_wider_dropout,
+        )
+        if exp:
+            experiments.append(exp)
+
+    desc = "Wider MLP (48,) + dropout 0.15"
+    if not desc_is_tried(desc, tried):
+        def patch_wider48_dropout(t: str) -> str:
+            t = replace_assignment(t, "HIDDEN_SIZES", "(48,)")
+            return replace_assignment(t, "DROPOUT", "0.15")
+
+        exp = _make_experiment(
+            base_text, kind="explore", family="combined",
+            description=desc,
+            hypothesis="Significantly more capacity with strong dropout may find better features.",
+            change="Widen to (48,) and increase dropout to 0.15.",
+            patch_fn=patch_wider48_dropout,
+        )
+        if exp:
+            experiments.append(exp)
+
+    # Lower LR + wider MLP
+    desc = "Wider MLP (32,) + lower LR 0.001"
+    if not desc_is_tried(desc, tried):
+        def patch_wider_lower_lr(t: str) -> str:
+            t = replace_assignment(t, "HIDDEN_SIZES", "(32,)")
+            return replace_assignment(t, "LEARNING_RATE", "0.001")
+
+        exp = _make_experiment(
+            base_text, kind="explore", family="combined",
+            description=desc,
+            hypothesis="Wider network may need slower learning to converge properly.",
+            change="Widen to (32,) and halve LR to 0.001.",
+            patch_fn=patch_wider_lower_lr,
+        )
+        if exp:
+            experiments.append(exp)
+
+    # Remove interactions + wider MLP
+    interaction_block = (
+        "                amp * rdw,\n"
+        "                sgp * log_crp,\n"
+        "                wbc * log_crp,\n"
+        "                lymph * rdw,\n"
+        "                alk * rdw,\n"
+        "                cep * log_crp,\n"
+    )
+    if interaction_block in base_text and "self.output_dim = 16" in base_text:
+        desc = "Remove interactions + wider MLP (48,)"
+        if not desc_is_tried(desc, tried):
+            def patch_no_int_wide(t: str) -> str:
+                t = replace_once(t, "        self.output_dim = 16", "        self.output_dim = 10", "no_int_dim")
+                t = replace_once(t, interaction_block, "", "no_int_features")
+                return replace_assignment(t, "HIDDEN_SIZES", "(48,)")
+
+            exp = _make_experiment(
+                base_text, kind="explore", family="combined",
+                description=desc,
+                hypothesis="Let the MLP learn its own feature interactions instead of hand-crafting them.",
+                change="Remove 6 interaction features, widen MLP to (48,).",
+                patch_fn=patch_no_int_wide,
+            )
+            if exp:
+                experiments.append(exp)
+
+        desc = "Remove interactions + two-layer MLP (32, 16)"
+        if not desc_is_tried(desc, tried):
+            def patch_no_int_deep(t: str) -> str:
+                t = replace_once(t, "        self.output_dim = 16", "        self.output_dim = 10", "no_int_dim")
+                t = replace_once(t, interaction_block, "", "no_int_features")
+                return replace_assignment(t, "HIDDEN_SIZES", "(32, 16)")
+
+            exp = _make_experiment(
+                base_text, kind="explore", family="combined",
+                description=desc,
+                hypothesis="A deeper MLP on raw features may learn better interactions than hand-crafted ones.",
+                change="Remove 6 interaction features, use (32, 16) MLP.",
+                patch_fn=patch_no_int_deep,
+            )
+            if exp:
+                experiments.append(exp)
+
+    return experiments
+
+
+# ---------------------------------------------------------------------------
+# Queue building and experiment selection
+# ---------------------------------------------------------------------------
+
+
+def build_full_queue(base_text: str) -> list[dict[str, Any]]:
+    """Build ALL candidate experiments, filtered for novelty. Exploration first."""
+    tried = get_tried_descriptions()
+    queue: list[dict[str, Any]] = []
+
+    queue.extend(gen_architecture_experiments(base_text, tried))
+    queue.extend(gen_activation_experiments(base_text, tried))
+    queue.extend(gen_combined_experiments(base_text, tried))
+    queue.extend(gen_normalization_experiments(base_text, tried))
+    queue.extend(gen_optimizer_experiments(base_text, tried))
+    queue.extend(gen_training_dynamics_experiments(base_text, tried))
+    queue.extend(gen_loss_experiments(base_text, tried))
+    queue.extend(gen_feature_experiments(base_text, tried))
+    queue.extend(gen_regularization_experiments(base_text, tried))
+    queue.extend(gen_scale_experiments(base_text, tried))
+    queue.extend(gen_hp_experiments(base_text, tried))
+
+    seen_hashes: set[str] = set()
+    deduped: list[dict[str, Any]] = []
+    for exp in queue:
+        h = exp["train_hash"]
+        if h in seen_hashes:
+            continue
+        seen_hashes.add(h)
+        deduped.append(exp)
+
     return deduped
 
 
-def make_weighted_cox_text(base_text: str) -> str:
-    old = """def cox_partial_loss(risk_scores: torch.Tensor, times: torch.Tensor, events: torch.Tensor) -> torch.Tensor:
-    order = torch.argsort(times, descending=True)
-    ordered_scores = risk_scores[order]
-    ordered_events = events[order]
-    log_risk = torch.logcumsumexp(ordered_scores, dim=0)
-    event_count = ordered_events.sum().clamp_min(1.0)
-    losses = -(ordered_scores - log_risk) * ordered_events
-    return losses.sum() / event_count
-"""
-    new = """def cox_partial_loss(risk_scores: torch.Tensor, times: torch.Tensor, events: torch.Tensor) -> torch.Tensor:
-    order = torch.argsort(times, descending=True)
-    ordered_scores = risk_scores[order]
-    ordered_times = times[order]
-    ordered_events = events[order]
-    log_risk = torch.logcumsumexp(ordered_scores, dim=0)
-    base_losses = -(ordered_scores - log_risk) * ordered_events
-    safe_times = ordered_times.clamp_min(1.0)
-    event_weights = torch.where(
-        ordered_events > 0,
-        (safe_times.mean() / safe_times).pow(0.35),
-        torch.ones_like(safe_times),
-    )
-    weighted_events = ordered_events * event_weights
-    normalizer = weighted_events.sum().clamp_min(1.0)
-    return (base_losses * event_weights).sum() / normalizer
-"""
-    return replace_once(base_text, old, new, "weighted_cox_loss")
-
-
-def make_pruned_encoder_text(base_text: str) -> str:
-    text = replace_once(base_text, "        self.output_dim = 16", "        self.output_dim = 10", "encoder_output_dim")
-    old = """        return torch.stack(
-            (
-                amp,
-                cep,
-                sgp,
-                log_crp,
-                lymph,
-                mcv,
-                rdw,
-                alk,
-                wbc,
-                pheno_no_age_xb,
-                amp * rdw,
-                sgp * log_crp,
-                wbc * log_crp,
-                lymph * rdw,
-                alk * rdw,
-                cep * log_crp,
-            ),
-            dim=1,
-        )
-"""
-    new = """        return torch.stack(
-            (
-                amp,
-                cep,
-                sgp,
-                log_crp,
-                lymph,
-                mcv,
-                rdw,
-                alk,
-                wbc,
-                pheno_no_age_xb,
-            ),
-            dim=1,
-        )
-"""
-    return replace_once(text, old, new, "pruned_encoder")
-
-
-def make_linear_residual_text(base_text: str) -> str:
-    old = """        layers: list[nn.Module] = []
-        last_dim = input_dim
-        for hidden_dim in hidden_sizes:
-            layers.append(nn.Linear(last_dim, hidden_dim))
-            layers.append(nn.GELU())
-            if dropout > 0:
-                layers.append(nn.Dropout(dropout))
-            last_dim = hidden_dim
-        layers.append(nn.Linear(last_dim, 1))
-        self.residual_head = nn.Sequential(*layers)
-"""
-    new = """        self.residual_head = nn.Linear(input_dim, 1)
-"""
-    return replace_once(base_text, old, new, "linear_residual_head")
-
-
-def make_smaller_residual_mlp_text(base_text: str) -> str:
-    return replace_once(
-        base_text,
-        "HIDDEN_SIZES = (32, 16)",
-        "HIDDEN_SIZES = (24, 12)",
-        "smaller_residual_mlp",
-    )
-
-
-def make_lower_residual_scale_text(base_text: str) -> str:
-    return replace_once(
-        base_text,
-        '        self.residual_scale = nn.Parameter(torch.tensor(0.1, dtype=torch.float32))',
-        '        self.residual_scale = nn.Parameter(torch.tensor(0.08, dtype=torch.float32))',
-        "lower_residual_scale",
-    )
-
-
-def make_higher_residual_scale_text(base_text: str) -> str:
-    return replace_once(
-        base_text,
-        '        self.residual_scale = nn.Parameter(torch.tensor(0.1, dtype=torch.float32))',
-        '        self.residual_scale = nn.Parameter(torch.tensor(0.12, dtype=torch.float32))',
-        "higher_residual_scale",
-    )
-
-
-def make_single_hidden_residual_text(base_text: str) -> str:
-    return replace_once(
-        base_text,
-        "HIDDEN_SIZES = (32, 16)",
-        "HIDDEN_SIZES = (16,)",
-        "single_hidden_residual",
-    )
-
-
-def make_silu_residual_text(base_text: str) -> str:
-    return replace_once(
-        base_text,
-        "            layers.append(nn.GELU())",
-        "            layers.append(nn.SiLU())",
-        "silu_residual_activation",
-    )
-
-
-def make_longer_patience_text(base_text: str) -> str:
-    return replace_assignment(base_text, "EARLY_STOP_PATIENCE_EVALS", "5")
-
-
-def make_lower_beta2_text(base_text: str) -> str:
-    return replace_once(
-        base_text,
-        '    optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)',
-        '    optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY, betas=(0.9, 0.98))',
-        "lower_beta2",
-    )
-
-
-def make_expanded_encoder_retry_text(base_text: str) -> str:
-    text = replace_once(base_text, "        self.output_dim = 16", "        self.output_dim = 21", "expanded_encoder_output_dim")
-    old = """        return torch.stack(
-            (
-                amp,
-                cep,
-                sgp,
-                log_crp,
-                lymph,
-                mcv,
-                rdw,
-                alk,
-                wbc,
-                pheno_no_age_xb,
-                amp * rdw,
-                sgp * log_crp,
-                wbc * log_crp,
-                lymph * rdw,
-                alk * rdw,
-                cep * log_crp,
-            ),
-            dim=1,
-        )
-"""
-    new = """        return torch.stack(
-            (
-                amp,
-                cep,
-                sgp,
-                log_crp,
-                lymph,
-                mcv,
-                rdw,
-                alk,
-                wbc,
-                pheno_no_age_xb,
-                amp * rdw,
-                sgp * log_crp,
-                wbc * log_crp,
-                lymph * rdw,
-                alk * rdw,
-                cep * log_crp,
-                amp * log_crp,
-                sgp * rdw,
-                alk * log_crp,
-                sgp / amp.clamp_min(1e-6),
-                torch.log1p(alk.clamp_min(0.0)),
-            ),
-            dim=1,
-        )
-"""
-    return replace_once(text, old, new, "expanded_encoder_retry")
-
-
-def make_linear_skip_correction_text(base_text: str) -> str:
-    text = replace_once(
-        base_text,
-        '        self.residual_scale = nn.Parameter(torch.tensor(0.1, dtype=torch.float32))',
-        '        self.residual_scale = nn.Parameter(torch.tensor(0.1, dtype=torch.float32))\n        self.linear_scale = nn.Parameter(torch.tensor(0.05, dtype=torch.float32))\n        self.linear_skip = nn.Linear(input_dim, 1)',
-        "linear_skip_parameters",
-    )
-    return replace_once(
-        text,
-        "        return self.base_weight * base_score + self.residual_scale * residual",
-        "        linear_skip = self.linear_skip(standardized).squeeze(-1)\n        return self.base_weight * base_score + self.residual_scale * residual + self.linear_scale * linear_skip",
-        "linear_skip_forward",
-    )
-
-
-def make_fixed_anchor_weight_text(base_text: str) -> str:
-    text = replace_once(
-        base_text,
-        '        self.base_weight = nn.Parameter(torch.tensor(1.0, dtype=torch.float32))',
-        '        self.register_buffer("base_weight", torch.tensor(1.0, dtype=torch.float32))',
-        "fixed_anchor_weight",
-    )
-    return replace_once(
-        text,
-        "        return self.base_weight * base_score + self.residual_scale * residual",
-        "        return base_score + self.residual_scale * residual",
-        "fixed_anchor_forward",
-    )
-
-
-def make_hybrid_pairwise_loss_text(base_text: str) -> str:
-    text = replace_once(
-        base_text,
-        """def cox_partial_loss(risk_scores: torch.Tensor, times: torch.Tensor, events: torch.Tensor) -> torch.Tensor:
-    order = torch.argsort(times, descending=True)
-    ordered_scores = risk_scores[order]
-    ordered_events = events[order]
-    log_risk = torch.logcumsumexp(ordered_scores, dim=0)
-    event_count = ordered_events.sum().clamp_min(1.0)
-    losses = -(ordered_scores - log_risk) * ordered_events
-    return losses.sum() / event_count
-""",
-        """def cox_partial_loss(risk_scores: torch.Tensor, times: torch.Tensor, events: torch.Tensor) -> torch.Tensor:
-    order = torch.argsort(times, descending=True)
-    ordered_scores = risk_scores[order]
-    ordered_events = events[order]
-    log_risk = torch.logcumsumexp(ordered_scores, dim=0)
-    event_count = ordered_events.sum().clamp_min(1.0)
-    losses = -(ordered_scores - log_risk) * ordered_events
-    return losses.sum() / event_count
-
-
-def pairwise_ranking_loss(risk_scores: torch.Tensor, times: torch.Tensor, events: torch.Tensor) -> torch.Tensor:
-    event_idx = torch.nonzero(events > 0, as_tuple=False).squeeze(1)
-    if event_idx.numel() == 0:
-        return risk_scores.new_tensor(0.0)
-    if event_idx.numel() > 256:
-        perm = torch.randperm(event_idx.numel(), device=event_idx.device)
-        event_idx = event_idx.index_select(0, perm[:256])
-    pair_losses: list[torch.Tensor] = []
-    for idx in event_idx:
-        later_idx = torch.nonzero(times > times[idx], as_tuple=False).squeeze(1)
-        if later_idx.numel() == 0:
-            continue
-        if later_idx.numel() > 256:
-            perm = torch.randperm(later_idx.numel(), device=later_idx.device)
-            later_idx = later_idx.index_select(0, perm[:256])
-        score_diff = risk_scores[idx] - risk_scores.index_select(0, later_idx)
-        pair_losses.append(torch.nn.functional.softplus(-score_diff).mean())
-    if not pair_losses:
-        return risk_scores.new_tensor(0.0)
-    return torch.stack(pair_losses).mean()
-""",
-        "hybrid_pairwise_loss_block",
-    )
-    return replace_once(
-        text,
-        "        loss = cox_partial_loss(risk_scores, train_times, train_events)",
-        "        loss = cox_partial_loss(risk_scores, train_times, train_events) + 0.2 * pairwise_ranking_loss(risk_scores, train_times, train_events)",
-        "hybrid_pairwise_loss_train_step",
-    )
-
-
-def make_feature_noise_text(base_text: str) -> str:
-    return replace_once(
-        base_text,
-        "        standardized = (encoded - self.feature_mean) / self.feature_std",
-        "        standardized = (encoded - self.feature_mean) / self.feature_std\n        if self.training:\n            standardized = standardized + 0.03 * torch.randn_like(standardized)",
-        "feature_noise_regularization",
-    )
-
-
-def make_feature_gate_text(base_text: str) -> str:
-    text = replace_once(
-        base_text,
-        '        self.linear_scale = nn.Parameter(torch.tensor(0.05, dtype=torch.float32))\n        self.linear_skip = nn.Linear(input_dim, 1)',
-        '        self.linear_scale = nn.Parameter(torch.tensor(0.05, dtype=torch.float32))\n        self.linear_skip = nn.Linear(input_dim, 1)\n        self.feature_gate = nn.Parameter(torch.zeros(input_dim, dtype=torch.float32))',
-        "feature_gate_parameters",
-    )
-    text = replace_once(
-        text,
-        "        standardized = (encoded - self.feature_mean) / self.feature_std",
-        "        standardized = (encoded - self.feature_mean) / self.feature_std\n        gated = standardized * torch.sigmoid(self.feature_gate)",
-        "feature_gate_forward_standardized",
-    )
-    text = replace_once(
-        text,
-        "        residual = self.residual_head(standardized).squeeze(-1)\n        linear_skip = self.linear_skip(standardized).squeeze(-1)",
-        "        residual = self.residual_head(gated).squeeze(-1)\n        linear_skip = self.linear_skip(gated).squeeze(-1)",
-        "feature_gate_forward_paths",
-    )
-    return add_retry_tag(text, "feature_gate_current")
-
-
-def make_quadratic_skip_text(base_text: str) -> str:
-    text = replace_once(
-        base_text,
-        '        self.linear_scale = nn.Parameter(torch.tensor(0.05, dtype=torch.float32))\n        self.linear_skip = nn.Linear(input_dim, 1)',
-        '        self.linear_scale = nn.Parameter(torch.tensor(0.05, dtype=torch.float32))\n        self.linear_skip = nn.Linear(input_dim, 1)\n        self.quadratic_scale = nn.Parameter(torch.tensor(0.02, dtype=torch.float32))\n        self.quadratic_skip = nn.Linear(input_dim, 1, bias=False)',
-        "quadratic_skip_parameters",
-    )
-    return replace_once(
-        text,
-        "        linear_skip = self.linear_skip(standardized).squeeze(-1)\n        return self.base_weight * base_score + self.residual_scale * residual + self.linear_scale * linear_skip",
-        "        linear_skip = self.linear_skip(standardized).squeeze(-1)\n        quadratic_skip = self.quadratic_skip(standardized.square()).squeeze(-1)\n        return self.base_weight * base_score + self.residual_scale * residual + self.linear_scale * linear_skip + self.quadratic_scale * quadratic_skip",
-        "quadratic_skip_forward",
-    )
-
-
-def make_minibatch_cosine_retry_text(base_text: str) -> str:
-    text = replace_once(
-        base_text,
-        '    optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)\n',
-        '    optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)\n    batch_size = min(1024, len(train_rows))\n    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=64, eta_min=LEARNING_RATE * 0.35)\n',
-        "minibatch_cosine_setup",
-    )
-    return replace_once(
-        text,
-        """        model.train()
-        optimizer.zero_grad(set_to_none=True)
-        risk_scores = model(train_x)
-        loss = cox_partial_loss(risk_scores, train_times, train_events)
-        loss.backward()
-        optimizer.step()
-""",
-        """        model.train()
-        batch_perm = torch.randperm(len(train_rows), device=device)
-        batch_losses: list[torch.Tensor] = []
-        for start in range(0, len(train_rows), batch_size):
-            batch_idx = batch_perm[start : start + batch_size]
-            optimizer.zero_grad(set_to_none=True)
-            risk_scores = model(train_x.index_select(0, batch_idx))
-            batch_times = train_times.index_select(0, batch_idx)
-            batch_events = train_events.index_select(0, batch_idx)
-            loss = cox_partial_loss(risk_scores, batch_times, batch_events)
-            loss.backward()
-            optimizer.step()
-            scheduler.step()
-            batch_losses.append(loss.detach())
-        loss = torch.stack(batch_losses).mean()
-""",
-        "minibatch_cosine_train_step",
-    )
-
-
-def build_exploration_queue(base_text: str, history_text: str) -> list[dict[str, Any]]:
-    lower = history_text.lower()
-    queue: list[dict[str, Any]] = []
-    weighted_cox_crashed = "crash: time-weighted cox loss to emphasize earlier aging deaths" in lower
-    lean_encoder_crashed = "crash: lean encoder with raw biomarkers plus pheno_no_age_xb only" in lower
-    linear_head_crashed = "crash: single linear residual head instead of hidden mlp" in lower
-    hybrid_pairwise_crashed = "crash: hybrid cox + pairwise ranking loss on single-hidden baseline" in lower
-    weighted_cox_retried = "retry time-weighted cox loss after supervisor fix" in lower
-    lean_encoder_retried = "retry lean encoder after supervisor fix" in lower
-    linear_head_retried = "retry single linear residual head after supervisor fix" in lower
-    hybrid_pairwise_retried = "retry hybrid cox + sampled pairwise ranking loss after memory fix" in lower
-
-    if weighted_cox_crashed and not weighted_cox_retried:
-        queue.append(
-            exploration_experiment(
-                base_text,
-                family="loss_design_retry",
-                description="Retry time-weighted Cox loss after supervisor fix",
-                hypothesis="The previous time-weighted Cox attempt failed before producing a completed summary block, so rerunning it under the fixed synchronous supervisor will reveal whether the loss family is genuinely promising or truly weak.",
-                change="Retry the time-weighted Cox objective after fixing the supervisor persistence bug that invalidated the earlier attempt.",
-                patch_fn=make_weighted_cox_text,
-                retry_tag="retry_weighted_cox_after_supervisor_fix",
-            )
-        )
-    elif "weighted cox" not in lower and "time-weighted cox" not in lower:
-        queue.append(
-            exploration_experiment(
-                base_text,
-                family="loss_design",
-                description="Time-weighted Cox loss to emphasize earlier aging deaths",
-                hypothesis="Local tuning has plateaued, so reweighting the Cox objective toward earlier events may better align the model with the ranking signal the validation split rewards.",
-                change="Replace the uniform Cox partial likelihood with a time-weighted Cox loss that gives somewhat more weight to earlier observed events.",
-                patch_fn=make_weighted_cox_text,
-            )
-        )
-    if lean_encoder_crashed and not lean_encoder_retried:
-        queue.append(
-            exploration_experiment(
-                base_text,
-                family="feature_representation_retry",
-                description="Retry lean encoder after supervisor fix",
-                hypothesis="The lean encoder never produced a valid run because the earlier orchestration failure killed it before completion, so it deserves one clean retry before the feature-representation family is abandoned.",
-                change="Retry the lean encoder variant after fixing the supervisor persistence bug that invalidated the earlier attempt.",
-                patch_fn=make_pruned_encoder_text,
-                prefer_simpler_on_tie=True,
-                retry_tag="retry_lean_encoder_after_supervisor_fix",
-            )
-        )
-    elif "lean encoder" not in lower and "pruned encoder" not in lower:
-        queue.append(
-            exploration_experiment(
-                base_text,
-                family="feature_representation",
-                description="Lean encoder with raw biomarkers plus pheno_no_age_xb only",
-                hypothesis="The failed feature-expansion run suggests extra interactions may overfit, so a leaner anchor-aligned encoder may generalize better than the current richer representation.",
-                change="Prune the encoder to the nine transformed biomarkers plus `pheno_no_age_xb`, removing all hand-crafted interaction features.",
-                patch_fn=make_pruned_encoder_text,
-                prefer_simpler_on_tie=True,
-            )
-        )
-    if linear_head_crashed and not linear_head_retried:
-        queue.append(
-            exploration_experiment(
-                base_text,
-                family="architecture_retry",
-                description="Retry single linear residual head after supervisor fix",
-                hypothesis="The single-linear residual head was never measured cleanly because the first attempt died before logging, so rerunning it under the repaired supervisor is a materially different test of that simpler architecture.",
-                change="Retry the single linear residual head after fixing the supervisor persistence bug that invalidated the earlier attempt.",
-                patch_fn=make_linear_residual_text,
-                prefer_simpler_on_tie=True,
-                retry_tag="retry_linear_head_after_supervisor_fix",
-            )
-        )
-    elif "linear residual head" not in lower and "single linear residual head" not in lower:
-        queue.append(
-            exploration_experiment(
-                base_text,
-                family="architecture",
-                description="Single linear residual head instead of hidden MLP",
-                hypothesis="Broader capacity increases have not helped, so collapsing the residual path to a single linear layer may reduce overfitting while preserving the pheno-no-age anchor.",
-                change="Replace the hidden residual MLP with a single linear correction layer on standardized encoded features.",
-                patch_fn=make_linear_residual_text,
-                prefer_simpler_on_tie=True,
-            )
-        )
-    if "smaller residual mlp 24-12" not in lower:
-        queue.append(
-            exploration_experiment(
-                base_text,
-                family="architecture_width",
-                description="Smaller residual MLP 24-12",
-                hypothesis="The full 32-16 residual head may be slightly too flexible, so shrinking it without collapsing to a purely linear correction could preserve the useful nonlinear adjustment while reducing overfitting.",
-                change="Reduce `HIDDEN_SIZES` from `(32, 16)` to `(24, 12)` while keeping the current training setup unchanged.",
-                patch_fn=make_smaller_residual_mlp_text,
-                prefer_simpler_on_tie=True,
-            )
-        )
-    if "lower residual_scale init 0.1 -> 0.08" not in lower:
-        queue.append(
-            exploration_experiment(
-                base_text,
-                family="anchor_strength",
-                description="Lower residual_scale init 0.1 -> 0.08",
-                hypothesis="The model may generalize better if it starts slightly closer to the pheno-no-age anchor and learns a smaller correction path, rather than giving the residual head as much influence from the start.",
-                change="Reduce the initial `residual_scale` from `0.1` to `0.08` while keeping the kept architecture and optimizer unchanged.",
-                patch_fn=make_lower_residual_scale_text,
-                prefer_simpler_on_tie=True,
-            )
-        )
-    if "higher residual_scale init 0.1 -> 0.12" not in lower:
-        queue.append(
-            exploration_experiment(
-                base_text,
-                family="anchor_strength_boost",
-                description="Higher residual_scale init 0.1 -> 0.12",
-                hypothesis="Reducing the residual contribution hurt badly, which suggests the kept model may actually be under-correcting the pheno-no-age anchor and could benefit from a slightly stronger residual path.",
-                change="Increase the initial `residual_scale` from `0.1` to `0.12` while keeping the kept architecture and optimizer unchanged.",
-                patch_fn=make_higher_residual_scale_text,
-            )
-        )
-    if "single hidden residual mlp 16" not in lower:
-        queue.append(
-            exploration_experiment(
-                base_text,
-                family="architecture_depth",
-                description="Single hidden residual MLP 16",
-                hypothesis="The two-layer 32-16 head may be using the wrong shape of capacity, so collapsing it to one modest hidden layer could preserve useful nonlinear correction while removing unnecessary depth.",
-                change="Change `HIDDEN_SIZES` from `(32, 16)` to `(16,)`, keeping the residual MLP, optimizer, and encoder otherwise unchanged.",
-                patch_fn=make_single_hidden_residual_text,
-                prefer_simpler_on_tie=True,
-            )
-        )
-    if "residual head gelu -> silu" not in lower:
-        queue.append(
-            exploration_experiment(
-                base_text,
-                family="activation_family",
-                description="Residual head GELU -> SiLU",
-                hypothesis="The search looks optimization-limited near the current basin, so a smoother residual nonlinearity may slightly improve ranking without changing model width or the anchor pathway.",
-                change="Replace the residual head activation from `nn.GELU()` to `nn.SiLU()` while keeping the kept encoder, widths, and optimizer otherwise unchanged.",
-                patch_fn=make_silu_residual_text,
-            )
-        )
-    if "early_stop_patience_evals 3 -> 5 on current kept baseline" not in lower:
-        queue.append(
-            exploration_experiment(
-                base_text,
-                family="training_dynamics_retry",
-                description="EARLY_STOP_PATIENCE_EVALS 3 -> 5 on current kept baseline",
-                hypothesis="The earlier patience increase was tested on a weaker baseline before the later LR, weight-decay, and eval-grid gains, so retrying it on the stronger current setup is materially different and may allow a later checkpoint to emerge.",
-                change="Increase `EARLY_STOP_PATIENCE_EVALS` from `3` to `5` on the current kept baseline without changing the model form.",
-                patch_fn=make_longer_patience_text,
-            )
-        )
-    if "adamw beta2 0.999 -> 0.98" not in lower:
-        queue.append(
-            exploration_experiment(
-                base_text,
-                family="optimizer_momentum",
-                description="AdamW beta2 0.999 -> 0.98",
-                hypothesis="The best local LR move nearly ties but does not clear the keep bar, which suggests the current basin may need a slightly different optimizer memory rather than another scalar LR nudge.",
-                change="Keep the current architecture and scalar hyperparameters, but set AdamW `betas=(0.9, 0.98)` instead of the default `beta2=0.999`.",
-                patch_fn=make_lower_beta2_text,
-            )
-        )
-    if "single-hidden residual head gelu -> silu" not in lower:
-        queue.append(
-            exploration_experiment(
-                base_text,
-                family="activation_family_retry_current",
-                description="Single-hidden residual head GELU -> SiLU",
-                hypothesis="The earlier SiLU run was the best overall discard and was tested before the winning switch to a shallower residual head, so re-running SiLU on the stronger current baseline is a materially different retry with real upside.",
-                change="Replace the residual activation from `nn.GELU()` to `nn.SiLU()` on top of the kept single-hidden residual MLP baseline.",
-                patch_fn=make_silu_residual_text,
-            )
-        )
-    if "expanded encoder retry on single-hidden baseline" not in lower:
-        queue.append(
-            exploration_experiment(
-                base_text,
-                family="feature_expansion_retry_current",
-                description="Expanded encoder retry on single-hidden baseline",
-                hypothesis="The earlier feature-expansion attempt was paired with a worse residual architecture, so retrying a richer interaction set on the stronger single-hidden baseline could recover signal that the deeper head previously overfit.",
-                change="Add five extra biomarker interactions to the encoder while keeping the current single-hidden residual head and optimizer unchanged.",
-                patch_fn=make_expanded_encoder_retry_text,
-            )
-        )
-    if "linear skip correction on single-hidden baseline" not in lower:
-        queue.append(
-            exploration_experiment(
-                base_text,
-                family="linear_skip_current",
-                description="Linear skip correction on single-hidden baseline",
-                hypothesis="The single-hidden residual head may still be too nonlinear for some stable ranking signal, so adding a small direct linear correction path could capture simple coefficient adjustments that the nonlinear branch misses.",
-                change="Add a learned linear skip correction on standardized encoded features alongside the current single-hidden residual head.",
-                patch_fn=make_linear_skip_correction_text,
-            )
-        )
-    if "fix base anchor weight at 1.0 on single-hidden baseline" not in lower:
-        queue.append(
-            exploration_experiment(
-                base_text,
-                family="anchor_lock_current",
-                description="Fix base anchor weight at 1.0 on single-hidden baseline",
-                hypothesis="The current model may be overfitting by re-scaling the pheno-no-age anchor itself, so forcing the anchor weight to stay fixed could let the residual branch learn cleaner corrections.",
-                change="Replace the learned `base_weight` with a fixed weight of `1.0`, keeping the current single-hidden residual correction path unchanged.",
-                patch_fn=make_fixed_anchor_weight_text,
-                prefer_simpler_on_tie=True,
-            )
-        )
-    if hybrid_pairwise_crashed and not hybrid_pairwise_retried:
-        queue.append(
-            exploration_experiment(
-                base_text,
-                family="loss_design_pairwise_retry_current",
-                description="Retry hybrid Cox + sampled pairwise ranking loss after memory fix",
-                hypothesis="The previous hybrid Cox plus pairwise attempt likely failed because the naive all-pairs construction was too memory-heavy, so retrying it with sampled comparable pairs is still a meaningfully different loss-design probe with real upside.",
-                change="Keep the current single-hidden residual architecture, but optimize a hybrid loss: Cox partial likelihood plus a sampled pairwise ranking surrogate over comparable event-survival pairs.",
-                patch_fn=make_hybrid_pairwise_loss_text,
-                retry_tag="retry_hybrid_pairwise_after_memory_fix",
-            )
-        )
-    elif "hybrid cox + pairwise ranking loss on single-hidden baseline" not in lower:
-        queue.append(
-            exploration_experiment(
-                base_text,
-                family="loss_design_pairwise_current",
-                description="Hybrid Cox + pairwise ranking loss on single-hidden baseline",
-                hypothesis="The model may now be limited by the mismatch between Cox optimization and the exact ranking target, so adding a smooth pairwise concordance surrogate could improve discrimination more meaningfully than another scalar hyperparameter tweak.",
-                change="Keep the current single-hidden residual architecture, but optimize a hybrid loss: Cox partial likelihood plus a small pairwise ranking surrogate over comparable event-survival pairs.",
-                patch_fn=make_hybrid_pairwise_loss_text,
-            )
-        )
-    if "encoded feature noise regularization on single-hidden baseline" not in lower:
-        queue.append(
-            exploration_experiment(
-                base_text,
-                family="regularization_noise_current",
-                description="Encoded feature noise regularization on single-hidden baseline",
-                hypothesis="The current winner may still be overfitting stable quirks of the training split, so a small amount of noise on standardized encoded features during training could improve robustness without changing the inference-time formula.",
-                change="Add small Gaussian noise to standardized encoded features during training while keeping the current single-hidden residual architecture and optimizer unchanged.",
-                patch_fn=make_feature_noise_text,
-            )
-        )
-    if "feature gate on standardized encoder on single-hidden baseline" not in lower:
-        queue.append(
-            exploration_experiment(
-                base_text,
-                family="feature_gate_current",
-                description="Feature gate on standardized encoder on single-hidden baseline",
-                hypothesis="The current model treats every encoded biomarker channel as equally available to the correction paths, so a learned per-feature gate may suppress noisy corrections and focus capacity on the most stable encoded signals.",
-                change="Add a learned sigmoid feature gate on standardized encoded features before both the residual MLP and the linear skip path.",
-                patch_fn=make_feature_gate_text,
-            )
-        )
-    if "quadratic skip correction on single-hidden baseline" not in lower:
-        queue.append(
-            exploration_experiment(
-                base_text,
-                family="quadratic_skip_current",
-                description="Quadratic skip correction on single-hidden baseline",
-                hypothesis="The remaining error may come from simple curvature in the encoded biomarker space, so adding a lightweight quadratic skip path could capture second-order corrections without needing a much larger residual network.",
-                change="Add a small quadratic skip correction on squared standardized encoded features alongside the current linear skip and residual paths.",
-                patch_fn=make_quadratic_skip_text,
-            )
-        )
-    if "mini-batch cox with cosine decay on single-hidden baseline" not in lower:
-        queue.append(
-            exploration_experiment(
-                base_text,
-                family="training_regime_minibatch_current",
-                description="Mini-batch Cox with cosine decay on single-hidden baseline",
-                hypothesis="The current winner may be trapped by deterministic full-batch optimization, so revisiting mini-batch Cox on the stronger single-hidden baseline could unlock a different basin than the earlier weaker-architecture attempt.",
-                change="Train the current single-hidden residual model with mini-batch Cox updates (`batch_size=1024`) and cosine learning-rate decay instead of the current full-batch constant-LR regime.",
-                patch_fn=make_minibatch_cosine_retry_text,
-            )
-        )
-    return queue
-
-
-def choose_next_experiment(state: dict[str, Any], history: dict[str, Any], base_text: str, history_text: str) -> dict[str, Any]:
+def choose_next_experiment(state: dict[str, Any], base_text: str) -> dict[str, Any]:
+    """Pick the next untried experiment from the full queue."""
     attempted = set(state.get("attempted_hashes", []))
-    phase = state.get("phase", "local")
-    queued = state.get("exploration_queue", [])
-    local_discards_since_keep = int(state.get("local_discards_since_keep", 0))
-
-    if phase == "explore" and queued:
-        remaining = [item for item in queued if item["train_hash"] not in attempted]
-        state["exploration_queue"] = remaining
-        if remaining:
-            return remaining[0]
-
-    if history["plateau_streak"] >= 8 or local_discards_since_keep >= MAX_LOCAL_DISCARDS_BEFORE_EXPLORATION:
-        queue = build_exploration_queue(base_text, history_text)
-        remaining = [item for item in queue if item["train_hash"] not in attempted]
-        if remaining:
-            burst = remaining[:MAX_EXPLORATION_BURST]
-            state["phase"] = "explore"
-            state["exploration_queue"] = burst
-            return burst[0]
-
-    state["phase"] = "local"
-    state["exploration_queue"] = []
-    local_queue = build_local_queue(base_text)
-    remaining_local = [item for item in local_queue if item["train_hash"] not in attempted]
-    if remaining_local:
-        return remaining_local[0]
-
-    raise RuntimeError("no fresh experiments remain for the current kept baseline")
+    queue = build_full_queue(base_text)
+    for exp in queue:
+        if exp["train_hash"] not in attempted:
+            return exp
+    raise RuntimeError("all experiments exhausted for the current kept baseline")
 
 
-def archive_run_log(pending: dict[str, Any]) -> None:
-    archive_path = Path(pending["archive_path"])
-    if RUNLOG.exists() and not archive_path.exists():
-        shutil.copyfile(RUNLOG, archive_path)
+# ---------------------------------------------------------------------------
+# Logging helpers
+# ---------------------------------------------------------------------------
 
 
 def run_and_log(description: str, status: str) -> None:
-    run(
+    run_cmd(
         [
             str(PY),
             str(HERE / "log_result.py"),
@@ -1054,7 +1278,18 @@ def run_and_log(description: str, status: str) -> None:
 
 def apply_keep_or_restore(status: str) -> None:
     command = "save" if status == "keep" else "restore"
-    run([str(PY), str(HERE / "manage_kept.py"), command], check=True)
+    run_cmd([str(PY), str(HERE / "manage_kept.py"), command], check=True)
+
+
+def archive_run_log(pending: dict[str, Any]) -> None:
+    archive_path = Path(pending["archive_path"])
+    if RUNLOG.exists() and not archive_path.exists():
+        shutil.copyfile(RUNLOG, archive_path)
+
+
+# ---------------------------------------------------------------------------
+# Recovery: reconcile a pending run that finished or crashed
+# ---------------------------------------------------------------------------
 
 
 def reconcile_pending_run(state: dict[str, Any]) -> bool:
@@ -1064,7 +1299,7 @@ def reconcile_pending_run(state: dict[str, Any]) -> bool:
 
     child_pid = pending.get("child_pid")
     if child_pid and pid_is_running(child_pid):
-        update_status_file(state, compute_history(load_results_rows()), "Waiting for active child run to finish.")
+        update_status_file(state, compute_history(load_results_rows()), "Waiting for active child run.")
         time.sleep(RUN_POLL_SECONDS)
         return True
 
@@ -1097,12 +1332,12 @@ def reconcile_pending_run(state: dict[str, Any]) -> bool:
         if not pending.get("journal_written", False):
             if status == "keep":
                 decision = "**keep**"
-                learning = "This broader change improved enough to replace the kept baseline."
-                next_move = "Resume local tuning around the new kept baseline."
+                learning = "This change improved enough to replace the kept baseline."
+                next_move = "Resume exploration from the new kept baseline."
             else:
                 decision = "**discard**; restored `train.py` from `last_kept_train.py`."
                 learning = "This change did not improve the kept baseline enough to justify replacing it."
-                next_move = "Restore the kept baseline and move to the next queued conceptual probe."
+                next_move = "Restore the kept baseline and try the next experiment."
             append_journal(
                 hypothesis=pending["hypothesis"],
                 change=pending["change"],
@@ -1121,14 +1356,9 @@ def reconcile_pending_run(state: dict[str, Any]) -> bool:
         if pending["train_hash"] not in state["attempted_hashes"]:
             state["attempted_hashes"].append(pending["train_hash"])
         if status == "keep":
-            state["phase"] = "local"
-            state["exploration_queue"] = []
-            state["attempted_hashes"] = [file_hash(read_text(KEPT))]
-            state["local_discards_since_keep"] = 0
-        elif pending.get("kind") == "local":
-            state["local_discards_since_keep"] = int(state.get("local_discards_since_keep", 0)) + 1
+            pass  # DO NOT clear attempted_hashes; global dedup persists across keeps
         PENDING.unlink(missing_ok=True)
-        update_status_file(state, compute_history(load_results_rows()), f"Reconciled completed run: {pending['description']}")
+        update_status_file(state, compute_history(load_results_rows()), f"Reconciled: {pending['description']}")
         return True
 
     archive_run_log(pending)
@@ -1142,8 +1372,8 @@ def reconcile_pending_run(state: dict[str, Any]) -> bool:
             change=pending["change"],
             result="crash / no completed summary block in `run.log`",
             decision="**crash**; restored `train.py` from `last_kept_train.py`.",
-            learning="The candidate did not finish cleanly, so it cannot be compared against the kept baseline.",
-            next_move="Continue from the kept baseline with the next queued experiment.",
+            learning="The candidate did not finish cleanly.",
+            next_move="Continue from the kept baseline with the next experiment.",
         )
         pending["journal_written"] = True
         save_json(PENDING, pending)
@@ -1154,11 +1384,14 @@ def reconcile_pending_run(state: dict[str, Any]) -> bool:
     state.setdefault("attempted_hashes", [])
     if pending["train_hash"] not in state["attempted_hashes"]:
         state["attempted_hashes"].append(pending["train_hash"])
-    if pending.get("kind") == "local":
-        state["local_discards_since_keep"] = int(state.get("local_discards_since_keep", 0)) + 1
     PENDING.unlink(missing_ok=True)
-    update_status_file(state, compute_history(load_results_rows()), f"Reconciled crashed run: {pending['description']}")
+    update_status_file(state, compute_history(load_results_rows()), f"Reconciled crash: {pending['description']}")
     return True
+
+
+# ---------------------------------------------------------------------------
+# Launch an experiment
+# ---------------------------------------------------------------------------
 
 
 def launch_experiment(state: dict[str, Any], history: dict[str, Any], experiment: dict[str, Any]) -> None:
@@ -1200,7 +1433,6 @@ def launch_experiment(state: dict[str, Any], history: dict[str, Any], experiment
     )
     pending["child_pid"] = proc.pid
     save_json(PENDING, pending)
-    update_status_file(state, history, f"Spawned child run: {experiment['description']}")
 
     with RUNLOG.open("w", encoding="utf-8") as log_handle:
         if proc.stdout is not None:
@@ -1212,34 +1444,32 @@ def launch_experiment(state: dict[str, Any], history: dict[str, Any], experiment
     pending["child_pid"] = 0
     pending["returncode"] = returncode
     save_json(PENDING, pending)
-    update_status_file(state, history, f"Finished raw run: {experiment['description']}")
+
+
+# ---------------------------------------------------------------------------
+# Initialization and main loop
+# ---------------------------------------------------------------------------
 
 
 def ensure_kept_snapshot() -> None:
     if KEPT.exists():
         return
     if TRAIN.exists():
-        run([str(PY), str(HERE / "manage_kept.py"), "save"], check=True)
+        run_cmd([str(PY), str(HERE / "manage_kept.py"), "save"], check=True)
 
 
 def summarize_results() -> None:
-    run([str(PY), str(HERE / "summarize_results.py")], check=False)
+    run_cmd([str(PY), str(HERE / "summarize_results.py")], check=False)
 
 
 def initialize_state() -> dict[str, Any]:
-    default = {
+    default: dict[str, Any] = {
         "attempted_hashes": [],
-        "exploration_queue": [],
-        "local_discards_since_keep": 0,
-        "phase": "local",
         "started_at_epoch": time.time(),
         "supervisor_pid": 0,
     }
     state = load_json(STATE, default)
     state.setdefault("attempted_hashes", [])
-    state.setdefault("exploration_queue", [])
-    state.setdefault("local_discards_since_keep", 0)
-    state.setdefault("phase", "local")
     state.setdefault("started_at_epoch", time.time())
     state["supervisor_pid"] = os.getpid()
     return state
@@ -1249,7 +1479,7 @@ def check_for_existing_supervisor(state: dict[str, Any]) -> None:
     disk_state = load_json(STATE, {})
     other_pid = disk_state.get("supervisor_pid")
     if other_pid and other_pid != os.getpid() and pid_is_running(other_pid):
-        raise RuntimeError(f"Another autoresearch supervisor is already running with pid {other_pid}.")
+        raise RuntimeError(f"Another supervisor is already running (pid {other_pid}).")
     save_json(STATE, state)
 
 
@@ -1272,22 +1502,14 @@ def main() -> int:
         while True:
             rows = load_results_rows()
             history = compute_history(rows)
-            state["local_discards_since_keep"] = max(
-                int(state.get("local_discards_since_keep", 0)),
-                compute_local_discards_since_last_keep(rows),
-            )
             elapsed = time.time() - float(state.get("started_at_epoch", time.time()))
             if elapsed >= MAX_SECONDS:
-                msg = (
-                    f"stop: time limit {MAX_SECONDS}s elapsed. "
-                    f"Best kept val_cindex={history['best_keep']:.6f}. "
-                    f"Completed runs={history['completed_runs']}."
-                )
+                msg = f"stop: time limit {MAX_SECONDS}s. Best val_cindex={history['best_keep']:.6f}. Runs={history['completed_runs']}."
                 record_stop_report(msg)
                 update_status_file(state, history, msg)
                 return 0
             if history["completed_runs"] >= MAX_RUNS:
-                msg = f"stop: completed experiment limit {MAX_RUNS} reached."
+                msg = f"stop: experiment limit {MAX_RUNS} reached."
                 record_stop_report(msg)
                 update_status_file(state, history, msg)
                 return 0
@@ -1297,39 +1519,27 @@ def main() -> int:
                 continue
 
             summarize_results()
-            journal_text = read_text(JOURNAL) if JOURNAL.exists() else ""
             rows = load_results_rows()
             history = compute_history(rows)
-            state["local_discards_since_keep"] = max(
-                int(state.get("local_discards_since_keep", 0)),
-                compute_local_discards_since_last_keep(rows),
-            )
-            results_descriptions = "\n".join(row.get("description", "") for row in rows)
-            history_text = journal_text + "\n" + results_descriptions
             base_text = read_text(KEPT)
             TRAIN.write_text(base_text, encoding="utf-8")
 
             if history["consecutive_discards"] >= MAX_CONSECUTIVE_DISCARDS:
-                attempted = set(state.get("attempted_hashes", []))
-                remaining_explore = [
-                    item
-                    for item in build_exploration_queue(base_text, history_text)
-                    if item["train_hash"] not in attempted
-                ]
-                if not remaining_explore:
+                try:
+                    choose_next_experiment(state, base_text)
+                except RuntimeError:
                     msg = (
-                        f"stop: {MAX_CONSECUTIVE_DISCARDS} consecutive discarded runs with no meaningful "
-                        f"improvement and no fresh exploration families remaining. "
-                        f"Best kept val_cindex={history['best_keep']:.6f}."
+                        f"stop: {MAX_CONSECUTIVE_DISCARDS} consecutive discards and no fresh experiments. "
+                        f"Best val_cindex={history['best_keep']:.6f}."
                     )
                     record_stop_report(msg)
                     update_status_file(state, history, msg)
                     return 0
 
             try:
-                experiment = choose_next_experiment(state, history, base_text, history_text)
+                experiment = choose_next_experiment(state, base_text)
             except RuntimeError as exc:
-                msg = f"stop: {exc}. Best kept val_cindex={history['best_keep']:.6f}."
+                msg = f"stop: {exc}. Best val_cindex={history['best_keep']:.6f}."
                 record_stop_report(msg)
                 update_status_file(state, history, msg)
                 return 0
@@ -1337,10 +1547,7 @@ def main() -> int:
             launch_experiment(state, history, experiment)
             save_json(STATE, state)
     except KeyboardInterrupt:
-        msg = (
-            "Loop stopped by user interruption. "
-            f"Best kept val_cindex remains {compute_history(load_results_rows())['best_keep']:.6f}."
-        )
+        msg = f"Stopped by user. Best val_cindex={compute_history(load_results_rows())['best_keep']:.6f}."
         record_stop_report(msg)
         update_status_file(state, compute_history(load_results_rows()), msg)
         return 0

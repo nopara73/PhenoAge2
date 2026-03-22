@@ -1,18 +1,5 @@
 {
-  "attempted_hashes": [
-    "47921e3d36ca",
-    "69364d3480bb",
-    "8e0b653c04a9",
-    "60bbb08f94f4",
-    "0cb1d8d441a1",
-    "442eb31c854d",
-    "c77a4253c133",
-    "331197b72638",
-    "efa13a7053d3",
-    "7ff7e0d9b39d",
-    "ab6fa9962b55",
-    "185fc4205a29"
-  ],
+  "attempted_hashes": [],
   "exploration_queue": [
     {
       "change": "Add a learned sigmoid feature gate on standardized encoded features before both the residual MLP and the linear skip path.",
