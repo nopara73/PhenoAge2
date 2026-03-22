@@ -243,6 +243,16 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new, 1)
 
 
+def replace_section(text: str, start_marker: str, end_marker: str, new_section: str, label: str) -> str:
+    start = text.find(start_marker)
+    if start == -1:
+        raise ValueError(f"missing start marker for {label}")
+    end = text.find(end_marker, start)
+    if end == -1:
+        raise ValueError(f"missing end marker for {label}")
+    return text[:start] + new_section + text[end:]
+
+
 # ---------------------------------------------------------------------------
 # Experiment factory
 # ---------------------------------------------------------------------------
@@ -450,6 +460,389 @@ def gen_architecture_experiments(base_text: str, tried: set[str]) -> list[dict[s
             hypothesis=f"Changing residual MLP to {new_hs} may improve capacity/regularization balance.",
             change=f"HIDDEN_SIZES {current_hs} -> {new_hs}",
             patch_fn=lambda t, v=new_hs: replace_assignment(t, "HIDDEN_SIZES", v),
+        )
+        if exp:
+            experiments.append(exp)
+
+    return experiments
+
+
+# ---------------------------------------------------------------------------
+# Experiment generators - radical model families
+# ---------------------------------------------------------------------------
+
+
+def make_raw_feature_encoder_text(base_text: str) -> str:
+    raw_encoder = """class FeatureEncoder(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.output_dim = 9
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x
+"""
+    return replace_section(
+        base_text,
+        "class FeatureEncoder(nn.Module):",
+        "\n\nclass RiskMLP(nn.Module):",
+        raw_encoder,
+        "raw_feature_encoder",
+    )
+
+
+def make_raw_mlp_text(base_text: str) -> str:
+    text = make_raw_feature_encoder_text(base_text)
+    raw_mlp = """class RiskMLP(nn.Module):
+    def __init__(self, hidden_sizes: tuple[int, ...], dropout: float):
+        super().__init__()
+        self.encoder = FeatureEncoder()
+        input_dim = self.encoder.output_dim
+        self.register_buffer("feature_mean", torch.zeros(input_dim, dtype=torch.float32))
+        self.register_buffer("feature_std", torch.ones(input_dim, dtype=torch.float32))
+
+        layers: list[nn.Module] = []
+        last_dim = input_dim
+        for hidden_dim in hidden_sizes:
+            layers.append(nn.Linear(last_dim, hidden_dim))
+            layers.append(nn.GELU())
+            if dropout > 0:
+                layers.append(nn.Dropout(dropout))
+            last_dim = hidden_dim
+        layers.append(nn.Linear(last_dim, 1))
+        self.head = nn.Sequential(*layers)
+
+    def set_standardizer(self, mean: torch.Tensor, std: torch.Tensor) -> None:
+        self.feature_mean.copy_(mean)
+        self.feature_std.copy_(std)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        encoded = self.encoder(x)
+        standardized = (encoded - self.feature_mean) / self.feature_std
+        return self.head(standardized).squeeze(-1)
+"""
+    return replace_section(
+        text,
+        "class RiskMLP(nn.Module):",
+        "\n\ndef cox_partial_loss(",
+        raw_mlp,
+        "raw_mlp_risk_model",
+    )
+
+
+def make_raw_linear_text(base_text: str) -> str:
+    text = make_raw_feature_encoder_text(base_text)
+    raw_linear = """class RiskMLP(nn.Module):
+    def __init__(self, hidden_sizes: tuple[int, ...], dropout: float):
+        super().__init__()
+        self.encoder = FeatureEncoder()
+        input_dim = self.encoder.output_dim
+        self.register_buffer("feature_mean", torch.zeros(input_dim, dtype=torch.float32))
+        self.register_buffer("feature_std", torch.ones(input_dim, dtype=torch.float32))
+        self.linear = nn.Linear(input_dim, 1)
+
+    def set_standardizer(self, mean: torch.Tensor, std: torch.Tensor) -> None:
+        self.feature_mean.copy_(mean)
+        self.feature_std.copy_(std)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        encoded = self.encoder(x)
+        standardized = (encoded - self.feature_mean) / self.feature_std
+        return self.linear(standardized).squeeze(-1)
+"""
+    return replace_section(
+        text,
+        "class RiskMLP(nn.Module):",
+        "\n\ndef cox_partial_loss(",
+        raw_linear,
+        "raw_linear_risk_model",
+    )
+
+
+def make_engineered_linear_text(base_text: str) -> str:
+    engineered_linear = """class RiskMLP(nn.Module):
+    def __init__(self, hidden_sizes: tuple[int, ...], dropout: float):
+        super().__init__()
+        self.encoder = FeatureEncoder()
+        input_dim = self.encoder.output_dim
+        self.register_buffer("feature_mean", torch.zeros(input_dim, dtype=torch.float32))
+        self.register_buffer("feature_std", torch.ones(input_dim, dtype=torch.float32))
+        self.linear = nn.Linear(input_dim, 1)
+
+    def set_standardizer(self, mean: torch.Tensor, std: torch.Tensor) -> None:
+        self.feature_mean.copy_(mean)
+        self.feature_std.copy_(std)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        encoded = self.encoder(x)
+        standardized = (encoded - self.feature_mean) / self.feature_std
+        return self.linear(standardized).squeeze(-1)
+"""
+    return replace_section(
+        base_text,
+        "class RiskMLP(nn.Module):",
+        "\n\ndef cox_partial_loss(",
+        engineered_linear,
+        "engineered_linear_risk_model",
+    )
+
+
+def make_additive_raw_text(base_text: str) -> str:
+    text = make_raw_feature_encoder_text(base_text)
+    additive_model = """class RiskMLP(nn.Module):
+    def __init__(self, hidden_sizes: tuple[int, ...], dropout: float):
+        super().__init__()
+        self.encoder = FeatureEncoder()
+        input_dim = self.encoder.output_dim
+        self.register_buffer("feature_mean", torch.zeros(input_dim, dtype=torch.float32))
+        self.register_buffer("feature_std", torch.ones(input_dim, dtype=torch.float32))
+        self.branches = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.Linear(1, 8),
+                    nn.SiLU(),
+                    nn.Linear(8, 1),
+                )
+                for _ in range(input_dim)
+            ]
+        )
+
+    def set_standardizer(self, mean: torch.Tensor, std: torch.Tensor) -> None:
+        self.feature_mean.copy_(mean)
+        self.feature_std.copy_(std)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        encoded = self.encoder(x)
+        standardized = (encoded - self.feature_mean) / self.feature_std
+        parts = [branch(standardized[:, i : i + 1]).squeeze(-1) for i, branch in enumerate(self.branches)]
+        return torch.stack(parts, dim=0).sum(dim=0)
+"""
+    return replace_section(
+        text,
+        "class RiskMLP(nn.Module):",
+        "\n\ndef cox_partial_loss(",
+        additive_model,
+        "additive_raw_model",
+    )
+
+
+def make_dual_encoder_text(base_text: str) -> str:
+    dual_encoder = """class FeatureEncoder(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.output_dim = 25
+        self.albumin_scale = float(ALBUMIN_G_PER_DL_TO_G_PER_L)
+        self.creatinine_scale = float(CREATININE_MG_PER_DL_TO_UMOL_PER_L)
+        self.glucose_scale = float(GLUCOSE_MG_PER_DL_TO_MMOL_PER_L)
+        self.crp_scale = float(CRP_MG_PER_DL_TO_MG_PER_L)
+        self.albumin_coef = float(ALBUMIN_COEF)
+        self.creatinine_coef = float(CREATININE_COEF)
+        self.glucose_coef = float(GLUCOSE_COEF)
+        self.log_crp_coef = float(LOG_CRP_COEF)
+        self.lymphocyte_coef = float(LYMPHOCYTE_PERCENT_COEF)
+        self.mcv_coef = float(MEAN_CELL_VOLUME_COEF)
+        self.rdw_coef = float(RDW_COEF)
+        self.alk_coef = float(ALKALINE_PHOSPHATASE_COEF)
+        self.wbc_coef = float(WBC_COEF)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        amp = x[:, 0] * self.albumin_scale
+        cep = x[:, 1] * self.creatinine_scale
+        sgp = x[:, 2] * self.glucose_scale
+        crp_mg_per_l = x[:, 3] * self.crp_scale
+        log_crp = torch.log(crp_mg_per_l.clamp_min(1e-6))
+        lymph = x[:, 4]
+        mcv = x[:, 5]
+        rdw = x[:, 6]
+        alk = x[:, 7]
+        wbc = x[:, 8]
+
+        pheno_no_age_xb = (
+            self.albumin_coef * amp
+            + self.creatinine_coef * cep
+            + self.glucose_coef * sgp
+            + self.log_crp_coef * log_crp
+            + self.lymphocyte_coef * lymph
+            + self.mcv_coef * mcv
+            + self.rdw_coef * rdw
+            + self.alk_coef * alk
+            + self.wbc_coef * wbc
+        )
+
+        engineered = torch.stack(
+            (
+                amp,
+                cep,
+                sgp,
+                log_crp,
+                lymph,
+                mcv,
+                rdw,
+                alk,
+                wbc,
+                pheno_no_age_xb,
+                amp * rdw,
+                sgp * log_crp,
+                wbc * log_crp,
+                lymph * rdw,
+                alk * rdw,
+                cep * log_crp,
+            ),
+            dim=1,
+        )
+        return torch.cat((x, engineered), dim=1)
+"""
+    text = replace_section(
+        base_text,
+        "class FeatureEncoder(nn.Module):",
+        "\n\nclass RiskMLP(nn.Module):",
+        dual_encoder,
+        "dual_encoder",
+    )
+    dual_mlp = """class RiskMLP(nn.Module):
+    def __init__(self, hidden_sizes: tuple[int, ...], dropout: float):
+        super().__init__()
+        self.encoder = FeatureEncoder()
+        input_dim = self.encoder.output_dim
+        self.register_buffer("feature_mean", torch.zeros(input_dim, dtype=torch.float32))
+        self.register_buffer("feature_std", torch.ones(input_dim, dtype=torch.float32))
+
+        layers: list[nn.Module] = []
+        last_dim = input_dim
+        for hidden_dim in hidden_sizes:
+            layers.append(nn.Linear(last_dim, hidden_dim))
+            layers.append(nn.SiLU())
+            if dropout > 0:
+                layers.append(nn.Dropout(dropout))
+            last_dim = hidden_dim
+        layers.append(nn.Linear(last_dim, 1))
+        self.head = nn.Sequential(*layers)
+
+    def set_standardizer(self, mean: torch.Tensor, std: torch.Tensor) -> None:
+        self.feature_mean.copy_(mean)
+        self.feature_std.copy_(std)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        encoded = self.encoder(x)
+        standardized = (encoded - self.feature_mean) / self.feature_std
+        return self.head(standardized).squeeze(-1)
+"""
+    return replace_section(
+        text,
+        "class RiskMLP(nn.Module):",
+        "\n\ndef cox_partial_loss(",
+        dual_mlp,
+        "dual_encoder_risk_model",
+    )
+
+
+def make_pairwise_only_text(base_text: str) -> str:
+    old_loss = """def cox_partial_loss(risk_scores: torch.Tensor, times: torch.Tensor, events: torch.Tensor) -> torch.Tensor:
+    order = torch.argsort(times, descending=True)
+    ordered_scores = risk_scores[order]
+    ordered_events = events[order]
+    log_risk = torch.logcumsumexp(ordered_scores, dim=0)
+    event_count = ordered_events.sum().clamp_min(1.0)
+    losses = -(ordered_scores - log_risk) * ordered_events
+    return losses.sum() / event_count
+"""
+    new_loss = """def cox_partial_loss(risk_scores: torch.Tensor, times: torch.Tensor, events: torch.Tensor) -> torch.Tensor:
+    event_idx = torch.nonzero(events > 0, as_tuple=False).squeeze(1)
+    if event_idx.numel() == 0:
+        return risk_scores.new_tensor(0.0)
+    if event_idx.numel() > 512:
+        perm = torch.randperm(event_idx.numel(), device=event_idx.device)
+        event_idx = event_idx.index_select(0, perm[:512])
+    pair_losses: list[torch.Tensor] = []
+    for idx in event_idx:
+        later_idx = torch.nonzero(times > times[idx], as_tuple=False).squeeze(1)
+        if later_idx.numel() == 0:
+            continue
+        if later_idx.numel() > 512:
+            perm = torch.randperm(later_idx.numel(), device=later_idx.device)
+            later_idx = later_idx.index_select(0, perm[:512])
+        score_diff = risk_scores[idx] - risk_scores.index_select(0, later_idx)
+        pair_losses.append(torch.nn.functional.softplus(-score_diff).mean())
+    if not pair_losses:
+        return risk_scores.new_tensor(0.0)
+    return torch.stack(pair_losses).mean()
+"""
+    return replace_once(base_text, old_loss, new_loss, "pairwise_only_loss")
+
+
+def gen_radical_experiments(base_text: str, tried: set[str]) -> list[dict[str, Any]]:
+    experiments: list[dict[str, Any]] = []
+
+    specs: list[tuple[str, str, str, Any, bool]] = [
+        (
+            "Raw biomarker MLP (32, 16), no pheno anchor",
+            "Pure raw-biomarker modeling may outperform the anchor-based design if the hand-crafted pheno pathway is constraining the optimum.",
+            "Replace the anchor-aligned encoder/pathway with a raw 9-biomarker MLP using HIDDEN_SIZES=(32, 16).",
+            lambda t: replace_assignment(replace_assignment(make_raw_mlp_text(t), "HIDDEN_SIZES", "(32, 16)"), "DROPOUT", "0.1"),
+            False,
+        ),
+        (
+            "Raw biomarker MLP (64, 32), no pheno anchor",
+            "A wider anchor-free MLP could capture nonlinear structure that the anchored family cannot express.",
+            "Replace the anchor-aligned encoder/pathway with a raw 9-biomarker MLP using HIDDEN_SIZES=(64, 32).",
+            lambda t: replace_assignment(replace_assignment(make_raw_mlp_text(t), "HIDDEN_SIZES", "(64, 32)"), "DROPOUT", "0.1"),
+            False,
+        ),
+        (
+            "Raw biomarker linear Cox",
+            "A completely linear age-free model on raw biomarkers tests whether the search is overcomplicating a mostly linear signal.",
+            "Use a standardized 9-biomarker linear Cox model with no pheno anchor and no hidden layers.",
+            make_raw_linear_text,
+            True,
+        ),
+        (
+            "Engineered-feature linear Cox",
+            "The best signal may live in the engineered 16-feature representation but not require any nonlinear residual network.",
+            "Use a standardized linear Cox model on the current 16 engineered biomarker features.",
+            make_engineered_linear_text,
+            True,
+        ),
+        (
+            "Additive biomarker subnetworks",
+            "A generalized-additive style model may capture smooth per-biomarker nonlinearities without relying on dense multivariate mixing.",
+            "Use nine independent 1D biomarker subnetworks and sum their outputs.",
+            make_additive_raw_text,
+            False,
+        ),
+        (
+            "Dual raw+engineered MLP (64, 32)",
+            "Combining raw biomarkers with engineered pheno-style features may recover signal lost by committing to only one representation.",
+            "Concatenate raw 9 biomarkers with engineered 16 features, then train a SiLU MLP with HIDDEN_SIZES=(64, 32).",
+            lambda t: replace_assignment(replace_assignment(make_dual_encoder_text(t), "HIDDEN_SIZES", "(64, 32)"), "DROPOUT", "0.1"),
+            False,
+        ),
+        (
+            "Pure pairwise ranking loss on current architecture",
+            "If Cox is misaligned with the actual ranking objective, optimizing pairwise concordance directly may help.",
+            "Replace Cox loss with sampled pairwise logistic ranking loss while keeping the current architecture.",
+            make_pairwise_only_text,
+            False,
+        ),
+        (
+            "Pure pairwise ranking + raw biomarker MLP",
+            "A new model family and a directly aligned ranking loss together may discover a basin the anchored Cox models never reach.",
+            "Use a raw 9-biomarker MLP with HIDDEN_SIZES=(32, 16) and pure pairwise ranking loss.",
+            lambda t: make_pairwise_only_text(replace_assignment(replace_assignment(make_raw_mlp_text(t), "HIDDEN_SIZES", "(32, 16)"), "DROPOUT", "0.1")),
+            False,
+        ),
+    ]
+
+    for desc, hyp, change, patch_fn, prefer_simpler in specs:
+        if desc_is_tried(desc, tried):
+            continue
+        exp = _make_experiment(
+            base_text,
+            kind="explore",
+            family="radical_models",
+            description=desc,
+            hypothesis=hyp,
+            change=change,
+            patch_fn=patch_fn,
+            prefer_simpler=prefer_simpler,
         )
         if exp:
             experiments.append(exp)
@@ -1223,6 +1616,7 @@ def build_full_queue(base_text: str) -> list[dict[str, Any]]:
     tried = get_tried_descriptions()
     queue: list[dict[str, Any]] = []
 
+    queue.extend(gen_radical_experiments(base_text, tried))
     queue.extend(gen_architecture_experiments(base_text, tried))
     queue.extend(gen_activation_experiments(base_text, tried))
     queue.extend(gen_combined_experiments(base_text, tried))

@@ -36,6 +36,20 @@ Experiment diversity requirements:
   9. Scale/init: different residual_scale, linear_scale starting points
   10. Seeds: different random seeds to test basin robustness
   11. Combined changes: pair two individually promising ideas (e.g., SiLU + wider MLP)
+  12. Raw biomarker models: ignore the pheno-style anchor entirely and train directly on the 9 biomarkers
+  13. Linear Cox baselines: both raw-feature and engineered-feature linear models
+  14. Additive models: per-biomarker subnetworks whose outputs are summed
+  15. Dual-representation models: concatenate raw biomarkers with engineered pheno-style features
+  16. Pure ranking optimization: pairwise ranking loss without any Cox term
+
+Radical-search mandate:
+- Before running any more micro-tuning, schedule at least one experiment from each of these radical families:
+  1. raw biomarker MLP with no pheno anchor
+  2. linear Cox model
+  3. additive biomarker subnetworks
+  4. dual raw + engineered feature model
+  5. pure pairwise ranking loss
+- These are not optional tie-breakers. They are required probes before concluding the search is saturated.
 
 Cross-run memory rules:
 - Before every experiment, run `python summarize_results.py` and read the latest journal entries.
