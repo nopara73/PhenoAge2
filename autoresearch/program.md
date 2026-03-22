@@ -1,55 +1,60 @@
 # PA2 Autoresearch
 
-This folder adapts Karpathy's Autoresearch idea to the PhenoAge 2.0 benchmark.
+This folder adapts Karpathy-style autoresearch to the PhenoAge 2.0 benchmark.
+
+The intended mode is simple: edit `train.py`, run one experiment, measure the result, keep it if it wins, otherwise revert and try something else.
 
 ## In-Scope Files
 
-Read these files before starting:
+Read these for context:
 
-- `prepare.py` — fixed harness. Loads the frozen NHANES benchmark, provides the development split, computes C-index, and defines the final comparison contract. Do not modify.
-- `train.py` — the only file you edit. This is where candidate PA2 models are defined and trained.
-- `results.tsv` — append-only experiment ledger. Read it before choosing the next experiment.
-- `research_journal.md` — short natural-language memory of hypotheses, outcomes, and next steps.
-- `summarize_results.py` — helper that prints the current leaderboard and recent history.
-- `manage_kept.py` — helper that saves or restores the last kept `train.py`.
-- `log_result.py` — helper that parses `run.log` and appends one row to `results.tsv`.
-- `../evaluation-protocol.md` — the frozen benchmark rules.
+- `prepare.py` — fixed benchmark harness and evaluation. Do not modify.
+- `train.py` — the only file you edit.
+- `results.tsv` — minimal experiment ledger.
+- `../evaluation-protocol.md` — frozen benchmark rules.
+
+Optional helpers:
+
+- `research_journal.md` — human-readable notes. Use after runs if helpful, not as a required ideation input.
+- `summarize_results.py` — convenience summary.
+- `manage_kept.py` — convenience save/restore helper for the current kept `train.py`.
+- `log_result.py` — convenience logger for `results.tsv`.
 
 ## Fixed Benchmark Rules
 
 The benchmark is frozen. Do not redefine it.
 
-- Inputs for PA2 are limited to the 9 original PhenoAge biomarkers.
+- Inputs are limited to the 9 original PhenoAge biomarkers.
 - `HSAGEIR` is not allowed as an input.
 - No extra covariates, external data, or external labels.
 - No leakage from the held-out `test` set.
-- All preprocessing must be fit only on the training portion of each development-fold split.
-- The headline comparison metric is held-out `C-index`.
-- Final success categories are `superior`, `non-inferior`, or `inferior` as defined in `../evaluation-protocol.md`.
-- Use the existing environment at `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe`.
-- Do not install dependencies, create a new environment, or use `uv run`.
+- All preprocessing must be fit only on the training portion of the development split.
+- The search metric is development `val_cindex`.
+- Final success categories are defined in `../evaluation-protocol.md`.
+- Use the existing interpreter at `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe`.
+- Do not install dependencies or create a new environment.
 
-## Experimentation Goal
+## Goal
 
-The goal is simple: get the highest `val_cindex` on the fixed development validation split while preserving the frozen benchmark constraints.
+Get the highest `val_cindex` on the fixed development validation split while respecting the frozen benchmark.
 
-This is a survival-ranking problem, not a classification problem. Optimize the model to rank earlier aging-related deaths ahead of longer survivors.
+This is a survival-ranking problem. The model should rank earlier aging-related deaths ahead of longer survivors.
 
-## What You CAN Do
+## Allowed / Not Allowed
 
-- Modify `train.py`
-- Change model architecture
-- Change optimizer and loss
-- Change hyperparameters
-- Simplify the model if it preserves or improves `val_cindex`
+You may:
 
-## What You CANNOT Do
+- modify `train.py`
+- change architecture, optimizer, loss, and hyperparameters
+- simplify the model if performance is preserved or improved
 
-- Modify `prepare.py`
-- Modify `../evaluation-protocol.md`
-- Use `HSAGEIR` directly or indirectly
-- Use `mortstat`, `time_months`, `permth_exm`, `ucod_leading`, or `aging_related_event` as model inputs
-- Touch the held-out `test` participants during search
+You may not:
+
+- modify `prepare.py`
+- modify `../evaluation-protocol.md`
+- use `HSAGEIR` directly or indirectly
+- use target-like columns such as `mortstat`, `time_months`, `permth_exm`, `ucod_leading`, or `aging_related_event` as inputs
+- use the held-out `test` participants during search
 
 ## Output Contract
 
@@ -67,83 +72,65 @@ best_step:        375
 artifact_path:    ...candidate_pa2.pt
 ```
 
-It must also save a scripted candidate model artifact at the path printed in `artifact_path`. The saved model must accept a raw biomarker tensor of shape `[N, 9]` and return one risk score per participant.
+It must also save a scripted artifact at the printed `artifact_path`. The saved model must accept a raw biomarker tensor of shape `[N, 9]` and return one risk score per participant.
 
-## Logging Results
+## Results Ledger
 
-When an experiment is done, log it to `results.tsv` (tab-separated, not comma-separated).
-
-Use these columns:
+Log each completed run to `results.tsv` using:
 
 ```text
 commit	val_cindex	memory_gb	status	description
 ```
 
 - `commit`: short git hash
-- `val_cindex`: development validation C-index, use `0.000000` for crashes
-- `memory_gb`: peak memory in GB, use `0.0` for crashes
+- `val_cindex`: development validation C-index, or `0.000000` for crashes
+- `memory_gb`: peak memory in GB, or `0.0` for crashes
 - `status`: `keep`, `discard`, or `crash`
 - `description`: short description of the experiment
 
 Higher `val_cindex` is better.
 
-## Cross-Run Memory Policy
+## Simplicity Criterion
 
-This search loop must build on previous runs instead of trying disconnected ideas.
+All else equal, simpler is better.
 
-Before editing `train.py`:
+Keep a change if it meaningfully improves `val_cindex`, or if it matches the current result with less complexity. Do not add brittle machinery for tiny gains.
 
-- Read `results.tsv` and `research_journal.md`.
-- Run `summarize_results.py` to see the current best and the recent history.
-- Start from the last kept version of `train.py`, not from a discarded one.
-- Choose one experiment that follows from prior results.
+## Experiment Selection
 
-When choosing the next run:
+Use `results.tsv` to avoid exact repeats.
 
-- Change only one conceptual thing at a time.
-- Prefer local moves near the current best configuration.
-- Do not repeat a discarded idea unless the journal explains why the retry is materially different.
-- If two ideas are equally plausible, prefer the simpler one.
-- A run may finish before `TIME_BUDGET` if `train.py` triggers validation-based early stopping; treat that as a normal outcome.
+Do not require each new run to be a local tweak of the current best. Radical or disconnected ideas are allowed if they are benchmark-legal and not obvious repeats.
 
-## Autonomy Policy
+Prefer experiments that are:
 
-Do not stop the search after one or two completed experiments just to summarize.
+1. clearly different from recent failures
+2. simple to describe and evaluate
+3. reversible if they do not help
 
-- After each completed run, immediately choose the next single-knob experiment and continue.
-- Keep iterating until one of these happens:
-  - 10 hours elapsed
-  - 1000 completed experiments
-  - 10 consecutive discarded runs without meaningful improvement and a clear explanation for why the search appears stuck
-  - explicit user interruption
-- Only stop-and-report when one of those conditions is met.
+## Recovery
 
-## Recovery Policy
+If a previous run finished but was not logged yet, reconcile it before starting the next one.
 
-If the agent is interrupted, reconcile the current state before starting a new experiment.
-
-- If `run.log` already contains a completed summary block, decide whether that finished run should be recorded as `keep`, `discard`, or `crash`.
-- Update `results.tsv`, `research_journal.md`, and `last_kept_train.py` consistently with that finished run before continuing.
-- Do not discard a completed run just because the interruption happened after training and before logging.
+If a run crashes because of a small bug, fix it and rerun the same idea once. If the idea itself seems broken, log the crash and move on.
 
 ## Experiment Loop
 
 1. Review the current git state.
-2. Sanity check the interpreter once with `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe -c "import sys, torch; print(sys.executable); print(torch.__version__)"`.
-3. Run `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe "C:\Users\user\Desktop\PhenoAge2\autoresearch\summarize_results.py"` and read `results.tsv` plus `research_journal.md`.
-4. If needed, restore the last kept baseline with `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe "C:\Users\user\Desktop\PhenoAge2\autoresearch\manage_kept.py" restore`.
-5. Modify only `train.py`.
-6. Run `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe "C:\Users\user\Desktop\PhenoAge2\autoresearch\train.py" > "C:\Users\user\Desktop\PhenoAge2\autoresearch\run.log" 2>&1`.
-7. Read out the results from `run.log`.
-8. Record the result in `results.tsv` with `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe "C:\Users\user\Desktop\PhenoAge2\autoresearch\log_result.py" --description "..." --status keep|discard|crash`.
-9. Append a short entry to `research_journal.md` with the hypothesis, outcome, learning, and next move.
-10. Keep the run only if `val_cindex` improves meaningfully or achieves the same result with less complexity.
-11. If the run is kept, save it with `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe "C:\Users\user\Desktop\PhenoAge2\autoresearch\manage_kept.py" save`.
-12. If the run is discarded or crashes, restore `train.py` from the last kept version with `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe "C:\Users\user\Desktop\PhenoAge2\autoresearch\manage_kept.py" restore`.
+2. Optionally summarize recent results.
+3. Start from the current kept `train.py` baseline, not an accidental leftover from a discarded run.
+4. Modify only `train.py`.
+5. Run `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe "C:\Users\user\Desktop\PhenoAge2\autoresearch\train.py" > "C:\Users\user\Desktop\PhenoAge2\autoresearch\run.log" 2>&1`.
+6. Read `run.log`.
+7. Log the result in `results.tsv`.
+8. If the run is better, keep it.
+9. If the run is equal or worse, revert to the kept baseline.
+
+Convenience helpers such as `manage_kept.py`, `summarize_results.py`, and `log_result.py` may be used, but they are optional. The core loop should remain understandable without them.
 
 ## Priority Order
 
 1. Respect the frozen benchmark.
 2. Improve `val_cindex`.
-3. Prefer simpler models when performance is similar.
-4. Avoid brittle hacks.
+3. Prefer simpler solutions when performance is close.
+4. Avoid brittle hacks and repeated local churn.
