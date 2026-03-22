@@ -12,14 +12,16 @@ The folder keeps the original Autoresearch shape:
 - `train.py` is the single agent-editable training file.
 - `program.md` contains the human-authored research instructions.
 
-Candidate models are developed using only `development` participants and scored by full-development `C-index`. Final comparison against original PhenoAge happens separately on the held-out `test` participants.
+Candidate models are developed and compared using only the full `development` split. The active search metric is `development_cindex`. The held-out `test` split is reserved for the final publish-time comparison only.
 
 ## Fixed benchmark contract
 
 - Inputs are limited to the 9 original PhenoAge biomarkers.
 - `HSAGEIR` is not allowed for PA2.
 - The held-out `test` split is frozen and must not be used during model search.
-- The headline benchmark metric is held-out `C-index`.
+- There is no internal development train/validation split in the active workflow.
+- The active search metric is full-development `development_cindex`.
+- The headline publish-time benchmark metric is held-out `C-index`.
 
 ## Quick start
 

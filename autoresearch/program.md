@@ -13,8 +13,8 @@ Read these for context:
 - `prepare.py` — fixed benchmark harness and evaluation. Do not modify.
 - `train.py` — the only executable experiment file.
 - `last_kept_train.py` — snapshot of the current kept baseline.
-- `results.tsv` — minimal experiment ledger.
-- `research_journal.md` — historical notes plus restart-era notes.
+- `results.tsv` — active experiment ledger.
+- `research_journal.md` — active notes for this clean restart.
 - `../evaluation-protocol.md` — frozen benchmark rules.
 
 Optional helpers:
@@ -31,8 +31,10 @@ The benchmark is frozen. Do not redefine it.
 - `HSAGEIR` is not allowed as an input.
 - No extra covariates, external data, or external labels.
 - No leakage from the held-out `test` set.
-- All search-time fitting, preprocessing, and scoring must use only participants in the `development` split.
+- Everything during search must use only participants in the `development` split.
 - The search metric is full-development `development_cindex`.
+- There is no internal `development` train/validation split in the active workflow.
+- `test` exists only for the final publish-time evaluation, not for model search.
 - Use the existing interpreter at `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe`.
 - Do not install dependencies or create a new environment.
 
@@ -126,7 +128,7 @@ Prefer experiments that are:
 
 ## Recovery
 
-If a previous run finished but was not logged yet, reconcile it before starting the next one.
+If this clean restart has no prior run yet, keep the ledger and journal empty until the first new run finishes.
 
 If a run crashes because of a small bug, fix it and rerun the same idea once. If the idea
 itself seems broken, log the crash and move on.
