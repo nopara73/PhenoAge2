@@ -1,0 +1,14 @@
+Device:            cpu
+Architecture:      ageless_phenoage_with_constructive_pairwise_witnesses
+Feature count:     9
+Development rows:  7486
+Time budget:       5s
+---
+development_cindex:0.748824
+training_seconds: 0.0
+total_seconds:    22.7
+peak_vram_mb:     0.0
+num_steps:        0
+num_params:       0
+stop_reason:      simple_constructive_pairwise_witness_hypothesis
+artifact_path:    C:\Users\user\Desktop\PhenoAge2\autoresearch\candidate_pa2.pt
