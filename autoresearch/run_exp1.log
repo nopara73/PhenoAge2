@@ -1,0 +1,88 @@
+Device:            cuda
+Architecture:    additive_semiadditive
+Feature count:     9
+Train/val rows:    5988/1498
+Time budget:       300s
+step 00000 | loss: 8.617500 | val_cindex: 0.513391 | best: 0.513391 | remaining: 298.8s
+step 00050 | loss: 8.010984 | val_cindex: 0.765807 | best: 0.765807 | remaining: 297.2s
+step 00100 | loss: 7.976904 | val_cindex: 0.768842 | best: 0.768842 | remaining: 295.3s
+step 00150 | loss: 7.973477 | val_cindex: 0.769080 | best: 0.769080 | remaining: 293.4s
+step 00200 | loss: 7.952982 | val_cindex: 0.766143 | best: 0.769080 | remaining: 292.1s
+step 00250 | loss: 7.941798 | val_cindex: 0.764271 | best: 0.769080 | remaining: 290.3s
+step 00300 | loss: 7.939386 | val_cindex: 0.763065 | best: 0.769080 | remaining: 288.7s
+step 00350 | loss: 7.939689 | val_cindex: 0.763510 | best: 0.769080 | remaining: 286.0s
+step 00400 | loss: 7.931857 | val_cindex: 0.763945 | best: 0.769080 | remaining: 283.8s
+Traceback (most recent call last):
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\train.py", line 270, in <module>
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\train.py", line 247, in main
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\train.py", line 137, in save_scripted_model
+    eval_count = 0
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\_script.py", line 1437, in script
+    ret = _script_impl(
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\_script.py", line 1146, in _script_impl
+    return torch.jit._recursive.create_script_module(
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\_recursive.py", line 557, in create_script_module
+    return create_script_module_impl(nn_module, concrete_type, stubs_fn)
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\_recursive.py", line 570, in create_script_module_impl
+    method_stubs = stubs_fn(nn_module)
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\_recursive.py", line 884, in infer_methods_to_compile
+    stubs = [make_stub_from_method(nn_module, method) for method in uniqued_methods]
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\_recursive.py", line 884, in <listcomp>
+    stubs = [make_stub_from_method(nn_module, method) for method in uniqued_methods]
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\_recursive.py", line 86, in make_stub_from_method
+    return make_stub(func, method_name)
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\_recursive.py", line 70, in make_stub
+    ast = get_jit_def(func, name, self_name="RecursiveScriptModule")
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\frontend.py", line 374, in get_jit_def
+    return build_def(
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\frontend.py", line 439, in build_def
+    return Def(Ident(r, def_name), decl, build_stmts(ctx, body))
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\frontend.py", line 188, in build_stmts
+    stmts = [build_stmt(ctx, s) for s in stmts]
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\frontend.py", line 188, in <listcomp>
+    stmts = [build_stmt(ctx, s) for s in stmts]
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\frontend.py", line 408, in __call__
+    return method(ctx, node)
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\frontend.py", line 784, in build_While
+    return While(r, build_expr(ctx, stmt.test), build_stmts(ctx, stmt.body))
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\frontend.py", line 188, in build_stmts
+    stmts = [build_stmt(ctx, s) for s in stmts]
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\frontend.py", line 188, in <listcomp>
+    stmts = [build_stmt(ctx, s) for s in stmts]
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\frontend.py", line 408, in __call__
+    return method(ctx, node)
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\frontend.py", line 805, in build_If
+    build_stmts(ctx, stmt.body),
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\frontend.py", line 188, in build_stmts
+step 00450 | loss: 7.927302 | val_cindex: 0.763654 | best: 0.769080 | remaining: 281.9s
+step 00500 | loss: 7.932634 | val_cindex: 0.764490 | best: 0.769080 | remaining: 280.5s
+step 00550 | loss: 7.929191 | val_cindex: 0.764073 | best: 0.769080 | remaining: 278.3s
+step 00600 | loss: 7.929065 | val_cindex: 0.764544 | best: 0.769080 | remaining: 276.9s
+step 00650 | loss: 7.929782 | val_cindex: 0.764706 | best: 0.769080 | remaining: 275.5s
+step 00700 | loss: 7.929342 | val_cindex: 0.765218 | best: 0.769080 | remaining: 274.1s
+    stmts = [build_stmt(ctx, s) for s in stmts]
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\frontend.py", line 188, in <listcomp>
+    stmts = [build_stmt(ctx, s) for s in stmts]
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\frontend.py", line 408, in __call__
+    return method(ctx, node)
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\frontend.py", line 699, in build_Expr
+    return ExprStmt(build_expr(ctx, value))
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\frontend.py", line 408, in __call__
+    return method(ctx, node)
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\frontend.py", line 908, in build_Call
+    args = [build_expr(ctx, py_arg) for py_arg in expr.args]
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\frontend.py", line 908, in <listcomp>
+    args = [build_expr(ctx, py_arg) for py_arg in expr.args]
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\frontend.py", line 408, in __call__
+    return method(ctx, node)
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\frontend.py", line 1219, in build_JoinedStr
+    raise NotSupportedError(r, "Don't support formatting in JoinedStr")
+torch.jit.frontend.NotSupportedError: Don't support formatting in JoinedStr:
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\train.py", line 174
+            remaining = max(0.0, TIME_BUDGET - train_seconds)
+            print(
+                f"step {step:05d} | loss: {loss.item():.6f} | "
+                ~ <--- HERE
+                f"val_cindex: {val_cindex:.6f} | best: {best_val_cindex:.6f} | "
+                f"remaining: {remaining:.1f}s"
+

@@ -1,0 +1,37 @@
+Device:            cuda
+Architecture:      soft_gated_calibrated_experts(expert_h=10,combiner_h=12,dropout=0.05)
+Feature count:     9
+Train/val rows:    5988/1498
+Time budget:       210s (prepare.TIME_BUDGET=300s)
+step 00000 | loss: 8.421798 | val_cindex: 0.456672 | best: 0.456672 | remaining: 208.4s
+step 00050 | loss: 8.179476 | val_cindex: 0.741794 | best: 0.741794 | remaining: 206.6s
+step 00100 | loss: 8.004795 | val_cindex: 0.767969 | best: 0.767969 | remaining: 205.8s
+step 00150 | loss: 7.953671 | val_cindex: 0.770663 | best: 0.770663 | remaining: 205.1s
+step 00200 | loss: 7.937879 | val_cindex: 0.772469 | best: 0.772469 | remaining: 204.5s
+step 00250 | loss: 7.925858 | val_cindex: 0.772147 | best: 0.772469 | remaining: 203.6s
+step 00300 | loss: 7.920978 | val_cindex: 0.771117 | best: 0.772469 | remaining: 202.9s
+step 00350 | loss: 7.915691 | val_cindex: 0.770534 | best: 0.772469 | remaining: 201.8s
+step 00400 | loss: 7.910868 | val_cindex: 0.770530 | best: 0.772469 | remaining: 200.7s
+step 00450 | loss: 7.904318 | val_cindex: 0.770550 | best: 0.772469 | remaining: 199.9s
+step 00500 | loss: 7.899847 | val_cindex: 0.770406 | best: 0.772469 | remaining: 199.2s
+step 00550 | loss: 7.890436 | val_cindex: 0.769987 | best: 0.772469 | remaining: 198.1s
+step 00600 | loss: 7.886652 | val_cindex: 0.769337 | best: 0.772469 | remaining: 197.3s
+step 00650 | loss: 7.875292 | val_cindex: 0.769048 | best: 0.772469 | remaining: 196.5s
+step 00700 | loss: 7.865972 | val_cindex: 0.768671 | best: 0.772469 | remaining: 195.6s
+step 00750 | loss: 7.863077 | val_cindex: 0.767657 | best: 0.772469 | remaining: 194.8s
+step 00800 | loss: 7.855737 | val_cindex: 0.766971 | best: 0.772469 | remaining: 194.1s
+step 00850 | loss: 7.849916 | val_cindex: 0.766289 | best: 0.772469 | remaining: 192.9s
+step 00900 | loss: 7.843379 | val_cindex: 0.765556 | best: 0.772469 | remaining: 192.1s
+step 00950 | loss: 7.841540 | val_cindex: 0.764237 | best: 0.772469 | remaining: 191.3s
+step 01000 | loss: 7.837785 | val_cindex: 0.764123 | best: 0.772469 | remaining: 190.2s
+step 01050 | loss: 7.838258 | val_cindex: 0.763714 | best: 0.772469 | remaining: 189.5s
+---
+val_cindex:       0.772469
+training_seconds: 20.5
+total_seconds:    72.8
+peak_vram_mb:     23.5
+num_steps:        1050
+num_params:       502
+best_step:        200
+stop_reason:      early_stop
+artifact_path:    C:\Users\user\Desktop\PhenoAge2\autoresearch\candidate_pa2.pt

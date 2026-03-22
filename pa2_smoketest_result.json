@@ -1,0 +1,12 @@
+{
+  "phenoage_c_index": 0.8680255348023732,
+  "pa2_c_index": 0.7840809361592382,
+  "delta": -0.08394459864313497,
+  "verdict": "inferior",
+  "benchmark_dataset": "nhanes3-phenoage",
+  "evaluation_split": "test",
+  "participants": 1872,
+  "aging_related_deaths": 542,
+  "candidate_model_path": "candidate_smoketest.pt",
+  "age_excluded_from_pa2_inputs": true
+}

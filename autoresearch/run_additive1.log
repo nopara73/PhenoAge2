@@ -1,0 +1,74 @@
+Device:            cuda
+Architecture:      baseline
+Feature count:     9
+Train/val rows:    5988/1498
+Time budget:       300s
+step 00000 | loss: 8.435798 | cox: 8.435798 | val_cindex: 0.534120 | best: 0.534120 | remaining: 296.8s
+Traceback (most recent call last):
+step 00050 | loss: 8.077207 | cox: 8.077207 | val_cindex: 0.757014 | best: 0.757014 | remaining: 295.4s
+step 00100 | loss: 7.987401 | cox: 7.987401 | val_cindex: 0.767354 | best: 0.767354 | remaining: 293.5s
+step 00150 | loss: 7.947972 | cox: 7.947972 | val_cindex: 0.772206 | best: 0.772206 | remaining: 291.3s
+step 00200 | loss: 7.941271 | cox: 7.941271 | val_cindex: 0.773554 | best: 0.773554 | remaining: 289.6s
+step 00250 | loss: 7.931965 | cox: 7.931965 | val_cindex: 0.773742 | best: 0.773742 | remaining: 287.4s
+step 00300 | loss: 7.931859 | cox: 7.931859 | val_cindex: 0.774197 | best: 0.774197 | remaining: 286.7s
+step 00350 | loss: 7.915349 | cox: 7.915349 | val_cindex: 0.774268 | best: 0.774197 | remaining: 286.0s
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\train.py", line 337, in <module>
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\train.py", line 312, in main
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\train.py", line 179, in save_scripted_model
+    train_seconds >= EARLY_STOP_MIN_TRAIN_SECONDS
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\_script.py", line 1437, in script
+    ret = _script_impl(
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\_script.py", line 1146, in _script_impl
+    return torch.jit._recursive.create_script_module(
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\_recursive.py", line 557, in create_script_module
+    return create_script_module_impl(nn_module, concrete_type, stubs_fn)
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\_recursive.py", line 630, in create_script_module_impl
+    create_methods_and_properties_from_stubs(
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\_recursive.py", line 466, in create_methods_and_properties_from_stubs
+    concrete_type._create_methods_and_properties(
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\annotations.py", line 504, in try_ann_to_type
+    return torch.jit._script._recursive_compile_class(ann, loc)
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\_script.py", line 1612, in _recursive_compile_class
+    return _compile_and_register_class(obj, rcb, _qual_name)
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\_recursive.py", line 58, in _compile_and_register_class
+    ast = get_jit_class_def(obj, obj.__name__)
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\frontend.py", line 301, in get_jit_class_def
+    method_defs = [
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\frontend.py", line 302, in <listcomp>
+    get_jit_def(obj, name, self_name=self_name, is_classmethod=is_classmethod(obj))
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\frontend.py", line 374, in get_jit_def
+    return build_def(
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\frontend.py", line 424, in build_def
+    param_list = build_param_list(ctx, py_def.args, self_name, pdt_arg_types)
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\lib\site-packages\torch\jit\frontend.py", line 467, in build_param_list
+    raise NotSupportedError(ctx_range, _vararg_kwarg_err)
+torch.jit.frontend.NotSupportedError: Compiled functions can't take variable number of arguments or use keyword-only arguments with defaults:
+  File "C:\Users\user\AppData\Roaming\uv\python\cpython-3.10.20-windows-x86_64-none\lib\pathlib.py", line 1187
+    def chmod(self, mode, *, follow_symlinks=True):
+                                             ~~~~ <--- HERE
+        """
+        Change the permissions of the path, like os.chmod().
+'__torch__.pathlib.Path' is being compiled since it was called from 'BaselineMLP.forward'
+  File "C:\Users\user\Desktop\PhenoAge2\autoresearch\train.py", line 94
+def save_scripted_model(model: nn.Module, path: Path) -> None:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    path.parent.mkdir(parents=True, exist_ok=True)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    scripted = torch.jit.script(model.cpu())
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    scripted.save(str(path))
+    ~~~~~~~~~~~~~~~~~~~~~~ <--- HERE
+
+step 00400 | loss: 7.918682 | cox: 7.918682 | val_cindex: 0.774819 | best: 0.774819 | remaining: 283.7s
+step 00450 | loss: 7.900817 | cox: 7.900817 | val_cindex: 0.774922 | best: 0.774922 | remaining: 281.4s
+step 00500 | loss: 7.907790 | cox: 7.907790 | val_cindex: 0.775896 | best: 0.775896 | remaining: 280.6s
+step 00550 | loss: 7.897393 | cox: 7.897393 | val_cindex: 0.776562 | best: 0.776562 | remaining: 278.3s
+step 00600 | loss: 7.892317 | cox: 7.892317 | val_cindex: 0.777193 | best: 0.777193 | remaining: 276.6s
+step 00650 | loss: 7.897312 | cox: 7.897312 | val_cindex: 0.777367 | best: 0.777367 | remaining: 274.9s
+step 00700 | loss: 7.892784 | cox: 7.892784 | val_cindex: 0.777608 | best: 0.777608 | remaining: 274.2s
+step 00750 | loss: 7.893195 | cox: 7.893195 | val_cindex: 0.777464 | best: 0.777608 | remaining: 273.6s
+step 00800 | loss: 7.888977 | cox: 7.888977 | val_cindex: 0.777361 | best: 0.777608 | remaining: 272.9s
+step 00850 | loss: 7.886765 | cox: 7.886765 | val_cindex: 0.777902 | best: 0.777902 | remaining: 270.8s
+step 00900 | loss: 7.892307 | cox: 7.892307 | val_cindex: 0.777137 | best: 0.777902 | remaining: 266.8s
+step 00950 | loss: 7.887278 | cox: 7.887278 | val_cindex: 0.777705 | best: 0.777902 | remaining: 264.7s
+step 01000 | loss: 7.881870 | cox: 7.881870 | val_cindex: 0.777513 | best: 0.777902 | remaining: 262.8s

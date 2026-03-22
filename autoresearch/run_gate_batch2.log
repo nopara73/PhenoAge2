@@ -1,0 +1,33 @@
+Device:            cuda
+Architecture:      zscore_bilinear_r48_linear_cox
+Feature count:     9
+Train/val rows:    5988/1498
+Time budget:       300s
+step 00000 | loss: 8.487017 | val_cindex: 0.587040 | best: 0.587040 | remaining: 292.3s
+step 00050 | loss: 8.226534 | val_cindex: 0.678954 | best: 0.678954 | remaining: 291.6s
+step 00100 | loss: 8.146938 | val_cindex: 0.712359 | best: 0.712359 | remaining: 288.5s
+step 00150 | loss: 8.095699 | val_cindex: 0.734676 | best: 0.734676 | remaining: 287.4s
+step 00200 | loss: 8.054657 | val_cindex: 0.748695 | best: 0.748695 | remaining: 283.4s
+step 00250 | loss: 8.022297 | val_cindex: 0.760148 | best: 0.760148 | remaining: 279.4s
+step 00300 | loss: 8.004592 | val_cindex: 0.764309 | best: 0.764309 | remaining: 276.0s
+step 00350 | loss: 7.992395 | val_cindex: 0.767246 | best: 0.767246 | remaining: 272.5s
+step 00400 | loss: 7.984565 | val_cindex: 0.768570 | best: 0.768570 | remaining: 270.7s
+step 00450 | loss: 7.979046 | val_cindex: 0.769123 | best: 0.769123 | remaining: 269.0s
+step 00500 | loss: 7.969794 | val_cindex: 0.768837 | best: 0.769123 | remaining: 268.2s
+step 00550 | loss: 7.973035 | val_cindex: 0.769372 | best: 0.769372 | remaining: 265.1s
+step 00600 | loss: 7.965889 | val_cindex: 0.768236 | best: 0.769372 | remaining: 262.0s
+step 00650 | loss: 7.978110 | val_cindex: 0.768068 | best: 0.769372 | remaining: 258.6s
+step 00700 | loss: 7.970197 | val_cindex: 0.767987 | best: 0.769372 | remaining: 253.7s
+step 00750 | loss: 7.960262 | val_cindex: 0.768220 | best: 0.769372 | remaining: 248.6s
+step 00800 | loss: 7.966546 | val_cindex: 0.769078 | best: 0.769372 | remaining: 245.0s
+step 00850 | loss: 7.966558 | val_cindex: 0.768710 | best: 0.769372 | remaining: 241.2s
+---
+val_cindex:       0.769372
+training_seconds: 58.8
+total_seconds:    205.2
+peak_vram_mb:     21.2
+num_steps:        850
+num_params:       874
+best_step:        550
+stop_reason:      early_stop
+artifact_path:    C:\Users\user\Desktop\PhenoAge2\autoresearch\candidate_pa2.pt
