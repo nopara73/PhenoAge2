@@ -6,6 +6,7 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
+from prepare import SUPERIORITY_THRESHOLD
 from results_ledger import append_result, load_rows
 
 
@@ -31,7 +32,7 @@ def _candidate_relative_path(path: Path) -> str:
 def _candidate_absolute_path(candidate_ref: str) -> Path:
     candidate_path = Path(candidate_ref)
     if candidate_path.is_absolute():
-        return candidate_path
+        return candidate_path.resolve()
     direct_path = (HERE / candidate_path).resolve()
     if direct_path.exists():
         return direct_path
@@ -81,22 +82,33 @@ def promote(candidate_ref: str, description: str | None = None) -> None:
     candidate_path = _candidate_absolute_path(candidate_ref)
     if not candidate_path.exists():
         raise FileNotFoundError(f"Saved candidate not found: {candidate_path}")
+    if SAVED_CANDIDATES_DIR.resolve() not in candidate_path.parents:
+        raise ValueError("Promote only accepts files stored under saved_candidates/.")
+
+    row = _find_candidate_row(candidate_path)
+    if row is None:
+        raise ValueError("Cannot promote a candidate that is not recorded in results.tsv.")
+    if row["status"] != "saved":
+        raise ValueError("Only rows recorded as `saved` can be promoted.")
+    if not row["delta_cindex"]:
+        raise ValueError("Saved candidate row is missing delta_cindex.")
+    if float(row["delta_cindex"]) < SUPERIORITY_THRESHOLD:
+        raise ValueError(
+            f"Saved candidate delta must be at least {SUPERIORITY_THRESHOLD:.2f}."
+        )
 
     shutil.copyfile(candidate_path, TRAIN_PATH)
     shutil.copyfile(candidate_path, KEPT_PATH)
-
-    row = _find_candidate_row(candidate_path)
-    if row is not None:
-        append_result(
-            commit=row["commit"] or _get_git_commit(),
-            development_cindex=float(row["development_cindex"]),
-            baseline_cindex=float(row["baseline_cindex"]) if row["baseline_cindex"] else None,
-            delta_cindex=float(row["delta_cindex"]) if row["delta_cindex"] else None,
-            memory_gb=float(row["memory_gb"] or 0.0),
-            status="keep",
-            candidate_path=_candidate_relative_path(candidate_path),
-            description=description or f"{row['description']} [promoted]",
-        )
+    append_result(
+        commit=row["commit"] or _get_git_commit(),
+        development_cindex=float(row["development_cindex"]),
+        baseline_cindex=float(row["baseline_cindex"]) if row["baseline_cindex"] else None,
+        delta_cindex=float(row["delta_cindex"]),
+        memory_gb=float(row["memory_gb"] or 0.0),
+        status="keep",
+        candidate_path=_candidate_relative_path(candidate_path),
+        description=description or f"{row['description']} [promoted]",
+    )
     print(
         "Promoted saved candidate to the kept baseline: "
         f"{_candidate_relative_path(candidate_path)}"
@@ -135,7 +147,7 @@ def status() -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Restore the kept baseline or explicitly promote a saved candidate."
+        description="Restore the kept baseline or explicitly promote a qualifying saved candidate."
     )
     parser.add_argument("command", choices=("restore", "promote", "list", "status"))
     parser.add_argument("candidate", nargs="?", help="Saved candidate path or filename for promote.")

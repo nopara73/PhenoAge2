@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from results_ledger import RESULTS_PATH, load_rows
+from results_ledger import load_rows
 
 
 def metric_value(row: dict[str, str]) -> float:
@@ -16,13 +16,11 @@ def format_row(row: dict[str, str]) -> str:
     candidate_suffix = ""
     if row.get("candidate_path"):
         candidate_suffix = f" | candidate={Path(row['candidate_path']).name}"
-    baseline_raw = row.get("baseline_cindex", "")
-    delta_raw = row.get("delta_cindex", "")
     comparison = ""
-    if baseline_raw:
-        comparison = f" | baseline={float(baseline_raw):.6f}"
-    if delta_raw:
-        comparison += f" | delta={float(delta_raw):+.6f}"
+    if row.get("baseline_cindex"):
+        comparison += f" | baseline={float(row['baseline_cindex']):.6f}"
+    if row.get("delta_cindex"):
+        comparison += f" | delta={float(row['delta_cindex']):+.6f}"
     return (
         f"{row['status']:>7} | development={metric_value(row):.6f} | mem_gb={row['memory_gb']} "
         f"| commit={row['commit']}{comparison}{candidate_suffix} | {row['description']}"

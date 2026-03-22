@@ -3,8 +3,8 @@
 This folder is in an ageless-PhenoAge restart phase.
 
 The intended mode is strict and simple: start from the exact ageless PhenoAge formula,
-edit `train.py`, run one experiment, measure the result, save only clearly better
-candidates, and keep the baseline unchanged until the user explicitly promotes one.
+edit `train.py`, run one experiment, measure the result, keep it only if it helps,
+otherwise restore the kept baseline and move on.
 
 ## In-Scope Files
 
@@ -19,7 +19,7 @@ Read these for context:
 
 Optional helpers:
 
-- `manage_kept.py` — restore/list/promote helper for the kept baseline and saved candidates.
+- `manage_kept.py` — save/restore helper for the current kept baseline.
 - `summarize_results.py` — convenience summary.
 - `log_result.py` — convenience logger for `results.tsv`.
 
@@ -106,6 +106,7 @@ Prefix every restart-era description with `[restart-ageless]` so the new baselin
 obvious in the ledger.
 
 Higher `development_cindex` is better.
+Only improvements with `delta_cindex >= 0.01` qualify as `saved`.
 
 ## Baseline Comparison Rule
 
@@ -113,8 +114,7 @@ During this restart, compare new experiments against the current kept ageless-fo
 baseline, not against the age-including original PhenoAge score and not against older ML runs.
 
 The initial kept baseline is the exact ageless PhenoAge formula.
-
-Normal experiment logging does not mutate that baseline.
+Normal experiment logging must not promote candidates to the kept baseline.
 
 ## Experiment Selection
 
@@ -141,9 +141,8 @@ itself seems broken, log the crash and move on.
 Restore always means restore to `last_kept_train.py`, which should remain the current kept
 ageless baseline.
 
-Saved candidates should be written under `saved_candidates/` and referenced from
-`results.tsv`. They are local source snapshots for later promotion; they are not the kept
-baseline by themselves.
+Saved candidates live under `saved_candidates/`. They are source snapshots for later manual
+promotion; they are not kept automatically.
 
 ## Experiment Loop
 
@@ -154,11 +153,11 @@ baseline by themselves.
 5. Run `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe "C:\Users\user\Desktop\PhenoAge2\multiautoresearch\train.py" > "C:\Users\user\Desktop\PhenoAge2\multiautoresearch\run.log" 2>&1`.
 6. Read `run.log`.
 7. Log the result in `results.tsv` with a description prefixed by `[restart-ageless]`.
-8. `log_result.py` compares the run against the kept baseline in `last_kept_train.py`.
-9. If the run improves the baseline by at least `0.01` C-index, log it as `saved` and snapshot the current `train.py` under `saved_candidates/`.
-10. Otherwise log it as `discard` or `crash`.
-11. After logging, `train.py` is restored to the kept baseline so the next run always starts from baseline.
-12. Only when the user explicitly asks should you run `python manage_kept.py promote <candidate_path>` to turn a saved candidate into the new kept baseline and record a `keep` row.
+8. `log_result.py` compares the run against `last_kept_train.py`.
+9. If the run improves the baseline by at least `0.01` C-index, it is logged as `saved` and `train.py` is snapshotted under `saved_candidates/`.
+10. Otherwise it is logged as `discard` or `crash`.
+11. After logging, `train.py` is restored to the kept baseline so the next run always starts clean.
+12. Only when the user explicitly asks should you run `python manage_kept.py promote <candidate_path>` to promote a `saved` candidate and append a `keep` row.
 
 ## Priority Order
 

@@ -3,6 +3,8 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
+from prepare import SUPERIORITY_THRESHOLD
+
 
 HERE = Path(__file__).resolve().parent
 RESULTS_PATH = HERE / "results.tsv"
@@ -17,6 +19,7 @@ HEADER = [
     "description",
 ]
 LEGACY_HEADER = ["commit", "development_cindex", "memory_gb", "status", "description"]
+ALLOWED_STATUSES = {"saved", "keep", "discard", "crash"}
 
 
 def _normalize_row(row: dict[str, str]) -> dict[str, str]:
@@ -70,6 +73,28 @@ def ensure_results_file() -> None:
         writer.writerows(normalized_rows)
 
 
+def _validate_result(
+    *,
+    status: str,
+    baseline_cindex: float | None,
+    delta_cindex: float | None,
+    candidate_path: str,
+) -> None:
+    if status not in ALLOWED_STATUSES:
+        raise ValueError(f"Unsupported status: {status}")
+    if status in {"saved", "keep"}:
+        if delta_cindex is None or baseline_cindex is None:
+            raise ValueError(f"`{status}` rows require baseline and delta values.")
+        if delta_cindex < SUPERIORITY_THRESHOLD:
+            raise ValueError(
+                f"`{status}` requires delta >= {SUPERIORITY_THRESHOLD:.2f}; got {delta_cindex:.6f}."
+            )
+        if not candidate_path:
+            raise ValueError(f"`{status}` rows require a candidate path.")
+    elif candidate_path:
+        raise ValueError(f"`{status}` rows must not have a candidate path.")
+
+
 def append_result(
     *,
     commit: str,
@@ -81,6 +106,12 @@ def append_result(
     candidate_path: str,
     description: str,
 ) -> None:
+    _validate_result(
+        status=status,
+        baseline_cindex=baseline_cindex,
+        delta_cindex=delta_cindex,
+        candidate_path=candidate_path,
+    )
     ensure_results_file()
     row = {
         "commit": commit,
