@@ -12,7 +12,7 @@ KEPT_PATH = HERE / "last_kept_train.py"
 
 def save() -> None:
     shutil.copyfile(TRAIN_PATH, KEPT_PATH)
-    print(f"Saved kept ageless baseline snapshot to {KEPT_PATH}")
+    print(f"Saved kept no-ML baseline snapshot to {KEPT_PATH}")
 
 
 def restore() -> None:
@@ -21,7 +21,7 @@ def restore() -> None:
             f"No kept baseline snapshot exists at {KEPT_PATH}. Run `python manage_kept.py save` first."
         )
     shutil.copyfile(KEPT_PATH, TRAIN_PATH)
-    print(f"Restored train.py from the kept ageless baseline at {KEPT_PATH}")
+    print(f"Restored train.py from the kept no-ML baseline at {KEPT_PATH}")
 
 
 def status() -> None:
@@ -32,7 +32,7 @@ def status() -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Save or restore the current kept ageless restart baseline snapshot."
+        description="Save or restore the current kept no-ML restart baseline snapshot."
     )
     parser.add_argument("command", choices=("save", "restore", "status"))
     args = parser.parse_args()

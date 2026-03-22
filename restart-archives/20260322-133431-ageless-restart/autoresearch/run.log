@@ -1,15 +1,15 @@
 Device:            cpu
-Architecture:      ageless_phenoage_formula
+Architecture:      elementary_no_ml_signed_zsum_log1pcep_log1psgp_log1pcrp_plus_mvpsi_rwp_plus_lmppcnt_wcp
 Feature count:     9
 Train/val rows:    5988/1498
 Time budget:       5s
 ---
-val_cindex:       0.760840
+val_cindex:       0.744677
 training_seconds: 0.0
-total_seconds:    1.5
+total_seconds:    1.4
 peak_vram_mb:     0.0
 num_steps:        0
 num_params:       0
 best_step:        0
-stop_reason:      exact_formula
+stop_reason:      formula_only
 artifact_path:    C:\Users\user\Desktop\PhenoAge2\autoresearch\candidate_pa2.pt

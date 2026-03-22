@@ -1,10 +1,9 @@
-# PA2 Ageless Formula Restart
+# PA2 Autoresearch Restart
 
-This folder is in an ageless-PhenoAge restart phase.
+This folder is in a no-ML restart phase.
 
-The intended mode is strict and simple: start from the exact ageless PhenoAge formula,
-edit `train.py`, run one experiment, measure the result, keep it only if it helps,
-otherwise restore the kept baseline and move on.
+The intended mode is strict and simple: edit `train.py`, run one experiment, measure the
+result, keep it only if it helps, otherwise restore the kept baseline and move on.
 
 ## In-Scope Files
 
@@ -12,14 +11,14 @@ Read these for context:
 
 - `prepare.py` — fixed benchmark harness and evaluation. Do not modify.
 - `train.py` — the only executable experiment file.
-- `last_kept_train.py` — snapshot of the current kept baseline.
+- `last_kept_train.py` — snapshot of the current kept no-ML baseline.
 - `results.tsv` — minimal experiment ledger.
 - `research_journal.md` — historical notes plus restart-era notes.
 - `../evaluation-protocol.md` — frozen benchmark rules.
 
 Optional helpers:
 
-- `manage_kept.py` — save/restore helper for the current kept baseline.
+- `manage_kept.py` — save/restore helper for the current kept no-ML baseline.
 - `summarize_results.py` — convenience summary.
 - `log_result.py` — convenience logger for `results.tsv`.
 
@@ -38,19 +37,18 @@ The benchmark is frozen. Do not redefine it.
 
 ## Restart Goal
 
-Get the highest `val_cindex` on the fixed development validation split starting from the
-exact ageless PhenoAge formula and using only deterministic biomarker scoring rules.
+Get the highest `val_cindex` on the fixed development validation split using only elementary,
+hand-built biomarker scoring rules.
 
 This restart is intentionally trying to answer a narrower question than the old search:
-can formula-first, age-free scoring beat the ageless PhenoAge baseline without drifting
-back into ML architecture churn?
+can simple arithmetic beat the current no-ML baseline without drifting back into anchors,
+optimizers, or architecture churn?
 
 ## Allowed / Not Allowed
 
 You may:
 
 - modify only `train.py`
-- use the repo-authoritative ageless PhenoAge biomarker formula as the baseline
 - change deterministic preprocessing, transforms, clipping, score directions, and score weights
 - add or remove simple hand-built arithmetic terms
 - simplify the scoring rule if performance is preserved or improved
@@ -60,6 +58,7 @@ You may not:
 - modify `prepare.py`
 - modify `../evaluation-protocol.md`
 - use `HSAGEIR` directly or indirectly
+- use `pheno_no_age_xb`, `compute_phenoage`, or original PhenoAge coefficients/constants
 - use machine learning, gradient descent, learned weights, neural nets, residual towers, or ensembling
 - use target-like columns such as `mortstat`, `time_months`, `permth_exm`, `ucod_leading`, or `aging_related_event` as inputs
 - use the held-out `test` participants during search
@@ -98,17 +97,18 @@ commit	val_cindex	memory_gb	status	description
 - `status`: `keep`, `discard`, or `crash`
 - `description`: short description of the experiment
 
-Prefix every restart-era description with `[restart-ageless]` so the new baseline era is
+Prefix every restart-era description with `[restart-no-ml]` so the new baseline era is
 obvious in the ledger.
 
 Higher `val_cindex` is better.
 
 ## Baseline Comparison Rule
 
-During this restart, compare new experiments against the current kept ageless-formula
-baseline, not against the age-including original PhenoAge score and not against older ML runs.
+During this restart, compare new experiments against the current kept elementary baseline,
+not against original age-including PhenoAge and not against old anchor-era ML runs.
 
-The initial kept baseline is the exact ageless PhenoAge formula.
+If an authoritative no-age comparator is later documented, cite it explicitly in experiment
+notes, but do not let that reintroduce the old anchor-plus-correction workflow.
 
 ## Experiment Selection
 
@@ -133,17 +133,17 @@ If a run crashes because of a small bug, fix it and rerun the same idea once. If
 itself seems broken, log the crash and move on.
 
 Restore always means restore to `last_kept_train.py`, which should remain the current kept
-ageless baseline.
+no-ML baseline.
 
 ## Experiment Loop
 
 1. Review the current git state.
 2. Optionally summarize recent results.
-3. Start from the current kept ageless baseline, not an accidental leftover from a discarded run.
+3. Start from the current kept no-ML baseline, not an accidental leftover from a discarded run.
 4. Modify only `train.py`.
 5. Run `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe "C:\Users\user\Desktop\PhenoAge2\autoresearch\train.py" > "C:\Users\user\Desktop\PhenoAge2\autoresearch\run.log" 2>&1`.
 6. Read `run.log`.
-7. Log the result in `results.tsv` with a description prefixed by `[restart-ageless]`.
+7. Log the result in `results.tsv` with a description prefixed by `[restart-no-ml]`.
 8. If the run is better, keep it.
 9. If the run is equal or worse, restore the kept no-ML baseline.
 

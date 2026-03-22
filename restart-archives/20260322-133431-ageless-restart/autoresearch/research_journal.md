@@ -1,29 +1,3 @@
-# Ageless Restart Journal
-
-## Restart Archive
-
-- Archived prior search state to `C:\Users\user\Desktop\PhenoAge2\restart-archives\20260322-133431-ageless-restart`.
-- Archive includes the prior `autoresearch` working set plus the root-level result JSON files and benchmark docs used by the earlier search.
-
-## New Restart
-
-- Goal: restart the search from a clean active state using the exact ageless PhenoAge formula as the initial kept baseline.
-- Active baseline file: `train.py`
-- Kept snapshot file: `last_kept_train.py`
-- Active results ledger: `results.tsv`
-- Old per-run logs and stale result artifacts were removed from the active working set after archival.
-
-## Run 1
-
-- Status: keep
-- Description: exact ageless PhenoAge formula exported as a scripted model on the development split
-- `val_cindex`: `0.760840`
-- `training_seconds`: `0.0`
-- `total_seconds`: `1.5`
-- `peak_vram_mb`: `0.0`
-- `num_params`: `0`
-- `best_step`: `0`
-- `artifact_path`: `C:\Users\user\Desktop\PhenoAge2\autoresearch\candidate_pa2.pt`
 # PA2 Research Journal
 
 Append one short entry after every completed run.
