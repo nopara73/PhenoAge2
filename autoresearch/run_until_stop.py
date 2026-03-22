@@ -1677,6 +1677,11 @@ def run_and_log(description: str, status: str) -> None:
     )
 
 
+def try_mark_logged_after_error(description: str, status: str) -> bool:
+    """Recover when log_result.py appended successfully but returned non-zero."""
+    return has_logged_result(description=description, status=status)
+
+
 def apply_keep_or_restore(status: str) -> None:
     command = "save" if status == "keep" else "restore"
     run_cmd([str(PY), str(HERE / "manage_kept.py"), command], check=True)
@@ -1734,16 +1739,22 @@ def reconcile_pending_run(state: dict[str, Any]) -> bool:
                 try:
                     run_and_log(description, status)
                 except Exception as exc:
-                    update_status_file(
-                        state,
-                        compute_history(load_results_rows()),
-                        f"Retrying result logging for {pending['description']}: {exc}",
-                    )
-                    time.sleep(RUN_POLL_SECONDS)
-                    return True
-                pending["logged"] = True
-                pending["status"] = status
-                save_json(PENDING, pending)
+                    if try_mark_logged_after_error(description, status):
+                        pending["logged"] = True
+                        pending["status"] = status
+                        save_json(PENDING, pending)
+                    else:
+                        update_status_file(
+                            state,
+                            compute_history(load_results_rows()),
+                            f"Retrying result logging for {pending['description']}: {exc}",
+                        )
+                        time.sleep(RUN_POLL_SECONDS)
+                        return True
+                else:
+                    pending["logged"] = True
+                    pending["status"] = status
+                    save_json(PENDING, pending)
         if not pending.get("journal_written", False):
             if status == "keep":
                 decision = "**keep**"
@@ -1786,15 +1797,20 @@ def reconcile_pending_run(state: dict[str, Any]) -> bool:
             try:
                 run_and_log(description, "crash")
             except Exception as exc:
-                update_status_file(
-                    state,
-                    compute_history(load_results_rows()),
-                    f"Retrying crash logging for {pending['description']}: {exc}",
-                )
-                time.sleep(RUN_POLL_SECONDS)
-                return True
-            pending["logged"] = True
-            save_json(PENDING, pending)
+                if try_mark_logged_after_error(description, "crash"):
+                    pending["logged"] = True
+                    save_json(PENDING, pending)
+                else:
+                    update_status_file(
+                        state,
+                        compute_history(load_results_rows()),
+                        f"Retrying crash logging for {pending['description']}: {exc}",
+                    )
+                    time.sleep(RUN_POLL_SECONDS)
+                    return True
+            else:
+                pending["logged"] = True
+                save_json(PENDING, pending)
     if not pending.get("journal_written", False):
         append_journal(
             hypothesis=pending["hypothesis"],

@@ -42,7 +42,7 @@ from prepare import (
 # Hyperparameters (edit these directly, no CLI flags needed)
 # ---------------------------------------------------------------------------
 
-HIDDEN_SIZES = (32, 16, 8)
+HIDDEN_SIZES = (48, 24)
 DROPOUT = 0.05
 LEARNING_RATE = 0.00195
 WEIGHT_DECAY = 0.00026

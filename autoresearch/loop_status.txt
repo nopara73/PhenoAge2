@@ -1,7 +1,7 @@
-updated_at: 2026-03-22 08:49:15
-supervisor_pid: 84960
+updated_at: 2026-03-22 08:53:09
+supervisor_pid: 82240
 best_kept_val_cindex: 0.782152
 consecutive_discards: 8
 completed_runs: 113
-pending_description: Three-layer residual MLP (32, 16, 8)
-note: Started: Three-layer residual MLP (32, 16, 8)
+pending_description: Two-layer residual MLP (48, 24)
+note: Started: Two-layer residual MLP (48, 24)

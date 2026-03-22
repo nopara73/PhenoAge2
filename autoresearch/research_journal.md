@@ -1041,3 +1041,11 @@ Rules:
 - Decision: **discard**; restored `train.py` from `last_kept_train.py`.
 - Learning: This change did not improve the kept baseline enough to justify replacing it.
 - Next: Restore the kept baseline and try the next experiment.
+
+## Run 129
+- Hypothesis: Changing residual MLP to (32, 16, 8) may improve capacity/regularization balance.
+- Change: HIDDEN_SIZES (24,) -> (32, 16, 8)
+- Result: crash / no completed summary block in `run.log`
+- Decision: **crash**; restored `train.py` from `last_kept_train.py`.
+- Learning: The candidate did not finish cleanly.
+- Next: Continue from the kept baseline with the next experiment.

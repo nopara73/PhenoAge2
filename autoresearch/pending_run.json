@@ -1,16 +1,16 @@
 {
-  "archive_path": "C:\\Users\\user\\Desktop\\PhenoAge2\\autoresearch\\run_129_architecture_width.log",
+  "archive_path": "C:\\Users\\user\\Desktop\\PhenoAge2\\autoresearch\\run_130_architecture_width.log",
   "baseline_action_done": false,
   "baseline_best": 0.782152,
-  "change": "HIDDEN_SIZES (24,) -> (32, 16, 8)",
-  "child_pid": 68596,
-  "description": "Three-layer residual MLP (32, 16, 8)",
+  "change": "HIDDEN_SIZES (24,) -> (48, 24)",
+  "child_pid": 70728,
+  "description": "Two-layer residual MLP (48, 24)",
   "family": "architecture_width",
-  "hypothesis": "Changing residual MLP to (32, 16, 8) may improve capacity/regularization balance.",
+  "hypothesis": "Changing residual MLP to (48, 24) may improve capacity/regularization balance.",
   "journal_written": false,
   "kind": "explore",
   "logged": false,
   "prefer_simpler_on_tie": false,
-  "started_at_epoch": 1774165755.970377,
-  "train_hash": "a3c091506514"
+  "started_at_epoch": 1774165989.0381591,
+  "train_hash": "e20b8c1ab348"
 }
