@@ -12,7 +12,7 @@ The folder keeps the original Autoresearch shape:
 - `train.py` is the single agent-editable training file.
 - `program.md` contains the human-authored research instructions.
 
-Candidate models are trained on `development` participants only and scored with development validation `C-index`. Final comparison against original PhenoAge happens separately on the held-out `test` participants.
+Candidate models are developed using only `development` participants and scored by full-development `C-index`. Final comparison against original PhenoAge happens separately on the held-out `test` participants.
 
 ## Fixed benchmark contract
 

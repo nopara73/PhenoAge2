@@ -13,12 +13,19 @@ def load_rows() -> list[dict[str, str]]:
         return []
     with RESULTS_PATH.open("r", newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle, delimiter="\t")
-        return list(reader)
+        return [row for row in reader if row.get("commit") != "commit"]
+
+
+def metric_value(row: dict[str, str]) -> float:
+    raw = row.get("development_cindex")
+    if raw is None:
+        raw = row["val_cindex"]
+    return float(raw)
 
 
 def format_row(row: dict[str, str]) -> str:
     return (
-        f"{row['status']:>7} | val={row['val_cindex']} | mem_gb={row['memory_gb']} "
+        f"{row['status']:>7} | development={metric_value(row):.6f} | mem_gb={row['memory_gb']} "
         f"| commit={row['commit']} | {row['description']}"
     )
 
@@ -32,13 +39,13 @@ def main() -> None:
     parsed = [
         {
             **row,
-            "_val": float(row["val_cindex"]),
+            "_metric": metric_value(row),
         }
         for row in rows
     ]
     keep_rows = [row for row in parsed if row["status"] == "keep"]
-    best_overall = max(parsed, key=lambda row: row["_val"])
-    best_keep = max(keep_rows, key=lambda row: row["_val"]) if keep_rows else None
+    best_overall = max(parsed, key=lambda row: row["_metric"])
+    best_keep = max(keep_rows, key=lambda row: row["_metric"]) if keep_rows else None
     recent = parsed[-5:]
 
     print(f"Total runs:        {len(parsed)}")

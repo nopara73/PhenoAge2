@@ -5,7 +5,7 @@ This file owns the immutable benchmark contract for PhenoAge 2.0 search:
 - frozen development/test split
 - allowed input features
 - original PhenoAge baseline scorer
-- development-only validation split helper
+- development-set scoring helper
 - held-out C-index evaluation
 """
 
@@ -15,7 +15,6 @@ import argparse
 import csv
 import json
 import math
-import random
 from pathlib import Path
 
 import numpy as np
@@ -26,8 +25,6 @@ import torch
 # ---------------------------------------------------------------------------
 
 TIME_BUDGET = 5
-DEV_VAL_FRACTION = 0.20
-DEV_VAL_SEED = 20260321
 SUPERIORITY_THRESHOLD = 0.01
 NON_INFERIORITY_MARGIN = -0.01
 
@@ -116,37 +113,6 @@ def get_rows_for_split(rows: list[dict[str, str]], split_name: str) -> list[dict
     if split_name not in ALLOWED_SPLITS:
         raise ValueError(f"Unexpected split name: {split_name}")
     return [row for row in rows if row["split"] == split_name]
-
-
-def stratified_development_split(
-    rows: list[dict[str, str]],
-    val_fraction: float = DEV_VAL_FRACTION,
-    seed: int = DEV_VAL_SEED,
-) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
-    development_rows = get_rows_for_split(rows, "development")
-    grouped: dict[str, list[dict[str, str]]] = {"0": [], "1": []}
-    for row in development_rows:
-        grouped[row[EVENT_COLUMN]].append(row)
-
-    rng = random.Random(seed)
-    train_rows: list[dict[str, str]] = []
-    val_rows: list[dict[str, str]] = []
-    for label, label_rows in grouped.items():
-        shuffled = list(label_rows)
-        rng.shuffle(shuffled)
-        val_count = max(1, round(len(shuffled) * val_fraction))
-        if val_count >= len(shuffled):
-            val_count = len(shuffled) - 1
-        val_seqn = {row["SEQN"] for row in shuffled[:val_count]}
-        for row in label_rows:
-            if row["SEQN"] in val_seqn:
-                val_rows.append(row)
-            else:
-                train_rows.append(row)
-
-    train_rows.sort(key=lambda row: int(row["SEQN"]))
-    val_rows.sort(key=lambda row: int(row["SEQN"]))
-    return train_rows, val_rows
 
 
 def feature_matrix(rows: list[dict[str, str]]) -> np.ndarray:
@@ -293,11 +259,9 @@ def main() -> None:
     rows = load_joined_rows()
     development_rows = get_rows_for_split(rows, "development")
     test_rows = get_rows_for_split(rows, "test")
-    train_rows, val_rows = stratified_development_split(rows)
     print(f"Loaded {len(rows)} joined participants from {DATA_DIR}")
     print(f"Development participants: {len(development_rows)}")
     print(f"Test participants: {len(test_rows)}")
-    print(f"Development train/val split: {len(train_rows)}/{len(val_rows)}")
     if args.show_counts:
         times, events = survival_arrays(test_rows)
         phenoage_c = harrell_c_index(times, events, compute_original_phenoage_scores(test_rows))

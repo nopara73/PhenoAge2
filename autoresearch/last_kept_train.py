@@ -18,12 +18,11 @@ import torch.nn as nn
 
 from prepare import (
     DEFAULT_CANDIDATE_MODEL_PATH,
-    DEV_VAL_SEED,
     FEATURE_COLUMNS,
     TIME_BUDGET,
     evaluate_cindex,
+    get_rows_for_split,
     load_joined_rows,
-    stratified_development_split,
     tensorize_features,
 )
 
@@ -95,13 +94,13 @@ def save_scripted_model(model: nn.Module, path: Path, example_x: torch.Tensor) -
 def main() -> None:
     t_start = time.time()
     rows = load_joined_rows()
-    train_rows, val_rows = stratified_development_split(rows, seed=DEV_VAL_SEED)
+    development_rows = get_rows_for_split(rows, "development")
     artifact_path = Path(DEFAULT_CANDIDATE_MODEL_PATH)
 
     model = AgelessPhenoAgeScore()
-    val_x = tensorize_features(val_rows, "cpu")
-    save_scripted_model(model, artifact_path, val_x[:1, :])
-    final_val_cindex = evaluate_cindex(torch.jit.load(str(artifact_path)), val_rows, "cpu")
+    development_x = tensorize_features(development_rows, "cpu")
+    save_scripted_model(model, artifact_path, development_x[:1, :])
+    development_cindex = evaluate_cindex(torch.jit.load(str(artifact_path)), development_rows, "cpu")
 
     t_end = time.time()
     num_params = sum(param.numel() for param in model.parameters())
@@ -109,16 +108,15 @@ def main() -> None:
     print("Device:            cpu")
     print("Architecture:      ageless_phenoage_formula")
     print(f"Feature count:     {len(FEATURE_COLUMNS)}")
-    print(f"Train/val rows:    {len(train_rows)}/{len(val_rows)}")
+    print(f"Development rows:  {len(development_rows)}")
     print(f"Time budget:       {TIME_BUDGET}s")
     print("---")
-    print(f"val_cindex:       {final_val_cindex:.6f}")
+    print(f"development_cindex:{development_cindex:.6f}")
     print("training_seconds: 0.0")
     print(f"total_seconds:    {t_end - t_start:.1f}")
     print("peak_vram_mb:     0.0")
     print("num_steps:        0")
     print(f"num_params:       {num_params}")
-    print("best_step:        0")
     print("stop_reason:      exact_formula")
     print(f"artifact_path:    {artifact_path}")
 

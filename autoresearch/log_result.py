@@ -11,7 +11,7 @@ HERE = Path(__file__).resolve().parent
 REPO_ROOT = HERE.parent
 DEFAULT_LOG_PATH = HERE / "run.log"
 RESULTS_PATH = HERE / "results.tsv"
-HEADER = ["commit", "val_cindex", "memory_gb", "status", "description"]
+HEADER = ["commit", "development_cindex", "memory_gb", "status", "description"]
 
 
 def parse_metric(text: str, name: str) -> float:
@@ -44,14 +44,14 @@ def ensure_results_file() -> None:
         writer.writerow(HEADER)
 
 
-def append_result(commit: str, val_cindex: float, memory_gb: float, status: str, description: str) -> None:
+def append_result(commit: str, development_cindex: float, memory_gb: float, status: str, description: str) -> None:
     ensure_results_file()
     with RESULTS_PATH.open("a", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle, delimiter="\t")
         writer.writerow(
             [
                 commit,
-                f"{val_cindex:.6f}",
+                f"{development_cindex:.6f}",
                 f"{memory_gb:.3f}",
                 status,
                 description,
@@ -74,24 +74,24 @@ def main() -> None:
 
     text = log_path.read_text(encoding="utf-8", errors="replace")
     if args.status == "crash":
-        val_cindex = 0.0
+        development_cindex = 0.0
         memory_gb = 0.0
     else:
-        val_cindex = parse_metric(text, "val_cindex")
+        development_cindex = parse_metric(text, "development_cindex")
         peak_vram_mb = parse_metric(text, "peak_vram_mb")
         memory_gb = peak_vram_mb / 1024.0
 
     commit = get_git_commit()
     append_result(
         commit=commit,
-        val_cindex=val_cindex,
+        development_cindex=development_cindex,
         memory_gb=memory_gb,
         status=args.status,
         description=args.description,
     )
     print(
         f"Logged {args.status} result: commit={commit} "
-        f"val_cindex={val_cindex:.6f} memory_gb={memory_gb:.3f}"
+        f"development_cindex={development_cindex:.6f} memory_gb={memory_gb:.3f}"
     )
 
 

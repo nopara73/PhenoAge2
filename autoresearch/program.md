@@ -31,14 +31,14 @@ The benchmark is frozen. Do not redefine it.
 - `HSAGEIR` is not allowed as an input.
 - No extra covariates, external data, or external labels.
 - No leakage from the held-out `test` set.
-- All preprocessing must be fit only on the training portion of the development split.
-- The search metric is development `val_cindex`.
+- All search-time fitting, preprocessing, and scoring must use only participants in the `development` split.
+- The search metric is full-development `development_cindex`.
 - Use the existing interpreter at `C:\Users\user\Desktop\PhenoAge2\autoresearch\.venv\Scripts\python.exe`.
 - Do not install dependencies or create a new environment.
 
 ## Restart Goal
 
-Get the highest `val_cindex` on the fixed development validation split starting from the
+Get the highest `development_cindex` on the full `development` split starting from the
 exact ageless PhenoAge formula and using only deterministic biomarker scoring rules.
 
 This restart is intentionally trying to answer a narrower question than the old search:
@@ -71,13 +71,12 @@ You may not:
 
 ```text
 ---
-val_cindex:       0.742100
+development_cindex:0.742100
 training_seconds: 0.0
 total_seconds:    0.3
 peak_vram_mb:     0.0
 num_steps:        0
 num_params:       0
-best_step:        0
 artifact_path:    ...candidate_pa2.pt
 ```
 
@@ -89,11 +88,11 @@ accept a raw biomarker tensor of shape `[N, 9]` and return one risk score per pa
 Log each completed run to `results.tsv` using:
 
 ```text
-commit	val_cindex	memory_gb	status	description
+commit	development_cindex	memory_gb	status	description
 ```
 
 - `commit`: short git hash
-- `val_cindex`: development validation C-index, or `0.000000` for crashes
+- `development_cindex`: full-development C-index, or `0.000000` for crashes
 - `memory_gb`: peak memory in GB, or `0.0` for crashes
 - `status`: `keep`, `discard`, or `crash`
 - `description`: short description of the experiment
@@ -101,7 +100,7 @@ commit	val_cindex	memory_gb	status	description
 Prefix every restart-era description with `[restart-ageless]` so the new baseline era is
 obvious in the ledger.
 
-Higher `val_cindex` is better.
+Higher `development_cindex` is better.
 
 ## Baseline Comparison Rule
 
@@ -150,6 +149,6 @@ ageless baseline.
 ## Priority Order
 
 1. Respect the frozen benchmark.
-2. Improve `val_cindex`.
+2. Improve `development_cindex`.
 3. Prefer simpler formulas when performance is close.
 4. Avoid brittle hacks, local hyperparameter churn, and any return to anchor-based ML.
