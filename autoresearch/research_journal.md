@@ -921,3 +921,19 @@ Rules:
 - Decision: **discard**; restored `train.py` from `last_kept_train.py`.
 - Learning: This change did not improve the kept baseline enough to justify replacing it.
 - Next: Restore the kept baseline and try the next experiment.
+
+## Run 114
+- Hypothesis: The best signal may live in the engineered 16-feature representation but not require any nonlinear residual network.
+- Change: Use a standardized linear Cox model on the current 16 engineered biomarker features.
+- Result: `val_cindex` **0.751185** at `best_step` **200** vs best kept **0.779707**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and try the next experiment.
+
+## Run 115
+- Hypothesis: A generalized-additive style model may capture smooth per-biomarker nonlinearities without relying on dense multivariate mixing.
+- Change: Use nine independent 1D biomarker subnetworks and sum their outputs.
+- Result: `val_cindex` **0.768591** at `best_step` **1000** vs best kept **0.779707**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and try the next experiment.

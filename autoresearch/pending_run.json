@@ -1,16 +1,16 @@
 {
-  "archive_path": "C:\\Users\\user\\Desktop\\PhenoAge2\\autoresearch\\run_114_radical_models.log",
+  "archive_path": "C:\\Users\\user\\Desktop\\PhenoAge2\\autoresearch\\run_116_radical_models.log",
   "baseline_action_done": false,
   "baseline_best": 0.779707,
-  "change": "Use a standardized linear Cox model on the current 16 engineered biomarker features.",
-  "child_pid": 77372,
-  "description": "Engineered-feature linear Cox",
+  "change": "Concatenate raw 9 biomarkers with engineered 16 features, then train a SiLU MLP with HIDDEN_SIZES=(64, 32).",
+  "child_pid": 83140,
+  "description": "Dual raw+engineered MLP (64, 32)",
   "family": "radical_models",
-  "hypothesis": "The best signal may live in the engineered 16-feature representation but not require any nonlinear residual network.",
+  "hypothesis": "Combining raw biomarkers with engineered pheno-style features may recover signal lost by committing to only one representation.",
   "journal_written": false,
   "kind": "explore",
   "logged": false,
-  "prefer_simpler_on_tie": true,
-  "started_at_epoch": 1774163595.6669788,
-  "train_hash": "ec05c139e7da"
+  "prefer_simpler_on_tie": false,
+  "started_at_epoch": 1774163892.6457052,
+  "train_hash": "d12e0239bb81"
 }

@@ -42,8 +42,8 @@ from prepare import (
 # Hyperparameters (edit these directly, no CLI flags needed)
 # ---------------------------------------------------------------------------
 
-HIDDEN_SIZES = (16,)
-DROPOUT = 0.05
+HIDDEN_SIZES = (64, 32)
+DROPOUT = 0.1
 LEARNING_RATE = 0.00195
 WEIGHT_DECAY = 0.00026
 EVAL_EVERY = 50
@@ -56,7 +56,7 @@ EARLY_STOP_MIN_TRAIN_SECONDS = 20.0
 class FeatureEncoder(nn.Module):
     def __init__(self):
         super().__init__()
-        self.output_dim = 16
+        self.output_dim = 25
         self.albumin_scale = float(ALBUMIN_G_PER_DL_TO_G_PER_L)
         self.creatinine_scale = float(CREATININE_MG_PER_DL_TO_UMOL_PER_L)
         self.glucose_scale = float(GLUCOSE_MG_PER_DL_TO_MMOL_PER_L)
@@ -95,7 +95,7 @@ class FeatureEncoder(nn.Module):
             + self.wbc_coef * wbc
         )
 
-        return torch.stack(
+        engineered = torch.stack(
             (
                 amp,
                 cep,
@@ -116,6 +116,7 @@ class FeatureEncoder(nn.Module):
             ),
             dim=1,
         )
+        return torch.cat((x, engineered), dim=1)
 
 
 class RiskMLP(nn.Module):
@@ -125,7 +126,17 @@ class RiskMLP(nn.Module):
         input_dim = self.encoder.output_dim
         self.register_buffer("feature_mean", torch.zeros(input_dim, dtype=torch.float32))
         self.register_buffer("feature_std", torch.ones(input_dim, dtype=torch.float32))
-        self.linear = nn.Linear(input_dim, 1)
+
+        layers: list[nn.Module] = []
+        last_dim = input_dim
+        for hidden_dim in hidden_sizes:
+            layers.append(nn.Linear(last_dim, hidden_dim))
+            layers.append(nn.SiLU())
+            if dropout > 0:
+                layers.append(nn.Dropout(dropout))
+            last_dim = hidden_dim
+        layers.append(nn.Linear(last_dim, 1))
+        self.head = nn.Sequential(*layers)
 
     def set_standardizer(self, mean: torch.Tensor, std: torch.Tensor) -> None:
         self.feature_mean.copy_(mean)
@@ -134,7 +145,7 @@ class RiskMLP(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         encoded = self.encoder(x)
         standardized = (encoded - self.feature_mean) / self.feature_std
-        return self.linear(standardized).squeeze(-1)
+        return self.head(standardized).squeeze(-1)
 
 
 def cox_partial_loss(risk_scores: torch.Tensor, times: torch.Tensor, events: torch.Tensor) -> torch.Tensor:

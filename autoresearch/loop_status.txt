@@ -1,7 +1,7 @@
-updated_at: 2026-03-22 08:13:15
+updated_at: 2026-03-22 08:18:12
 supervisor_pid: 76956
 best_kept_val_cindex: 0.779707
-consecutive_discards: 10
-completed_runs: 99
-pending_description: Engineered-feature linear Cox
-note: Started: Engineered-feature linear Cox
+consecutive_discards: 12
+completed_runs: 101
+pending_description: Dual raw+engineered MLP (64, 32)
+note: Started: Dual raw+engineered MLP (64, 32)
