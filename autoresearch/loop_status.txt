@@ -1,7 +1,7 @@
-updated_at: 2026-03-22 08:18:12
-supervisor_pid: 76956
-best_kept_val_cindex: 0.779707
-consecutive_discards: 12
-completed_runs: 101
-pending_description: Dual raw+engineered MLP (64, 32)
-note: Started: Dual raw+engineered MLP (64, 32)
+updated_at: 2026-03-22 08:49:15
+supervisor_pid: 84960
+best_kept_val_cindex: 0.782152
+consecutive_discards: 8
+completed_runs: 113
+pending_description: Three-layer residual MLP (32, 16, 8)
+note: Started: Three-layer residual MLP (32, 16, 8)

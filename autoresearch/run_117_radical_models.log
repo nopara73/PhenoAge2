@@ -1,0 +1,20 @@
+Device:            cuda
+Feature count:     9
+Train/val rows:    5988/1498
+Time budget:       300s
+step 00000 | loss: 0.567696 | val_cindex: 0.761725 | best: 0.761725 | remaining: 291.7s
+step 00050 | loss: 0.544892 | val_cindex: 0.767501 | best: 0.767501 | remaining: 184.2s
+step 00100 | loss: 0.531250 | val_cindex: 0.769299 | best: 0.769299 | remaining: 139.2s
+step 00150 | loss: 0.494278 | val_cindex: 0.772841 | best: 0.772841 | remaining: 111.5s
+step 00200 | loss: 0.497308 | val_cindex: 0.773173 | best: 0.773173 | remaining: 81.0s
+step 00250 | loss: 0.492129 | val_cindex: 0.773635 | best: 0.773635 | remaining: 27.3s
+---
+val_cindex:       0.773635
+training_seconds: 300.1
+total_seconds:    325.2
+peak_vram_mb:     22.7
+num_steps:        296
+num_params:       309
+best_step:        250
+stop_reason:      time_budget
+artifact_path:    C:\Users\user\Desktop\PhenoAge2\autoresearch\candidate_pa2.pt

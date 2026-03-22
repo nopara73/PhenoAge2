@@ -5,7 +5,20 @@
     "e9a07fbb03b8",
     "1d68c1e5a97b",
     "ec05c139e7da",
-    "02be899ad0b3"
+    "02be899ad0b3",
+    "d12e0239bb81",
+    "7eb272c982d7",
+    "676ce434e401",
+    "4e9389c8c805",
+    "8bc8cea0d406",
+    "5519e51d7d91",
+    "c6a58643f198",
+    "8fd75a772951",
+    "9168848bea53",
+    "fdb34a87ebda",
+    "6aaade2a35af",
+    "12b3b1031d88",
+    "6c796505914d"
   ],
   "exploration_queue": [
     {
@@ -32,5 +45,5 @@
   "local_discards_since_keep": 6,
   "phase": "explore",
   "started_at_epoch": 1774136462.9348943,
-  "supervisor_pid": 76956
+  "supervisor_pid": 84960
 }

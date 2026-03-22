@@ -937,3 +937,107 @@ Rules:
 - Decision: **discard**; restored `train.py` from `last_kept_train.py`.
 - Learning: This change did not improve the kept baseline enough to justify replacing it.
 - Next: Restore the kept baseline and try the next experiment.
+
+## Run 116
+- Hypothesis: Combining raw biomarkers with engineered pheno-style features may recover signal lost by committing to only one representation.
+- Change: Concatenate raw 9 biomarkers with engineered 16 features, then train a SiLU MLP with HIDDEN_SIZES=(64, 32).
+- Result: crash / no completed summary block in `run.log`
+- Decision: **crash**; restored `train.py` from `last_kept_train.py`.
+- Learning: The candidate did not finish cleanly.
+- Next: Continue from the kept baseline with the next experiment.
+
+## Run 117
+- Hypothesis: If Cox is misaligned with the actual ranking objective, optimizing pairwise concordance directly may help.
+- Change: Replace Cox loss with sampled pairwise logistic ranking loss while keeping the current architecture.
+- Result: `val_cindex` **0.773635** at `best_step` **250** vs best kept **0.779707**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and try the next experiment.
+
+## Run 118
+- Hypothesis: A new model family and a directly aligned ranking loss together may discover a basin the anchored Cox models never reach.
+- Change: Use a raw 9-biomarker MLP with HIDDEN_SIZES=(32, 16) and pure pairwise ranking loss.
+- Result: `val_cindex` **0.774495** at `best_step` **150** vs best kept **0.779707**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and try the next experiment.
+
+## Run 119
+- Hypothesis: Changing residual MLP to (8,) may improve capacity/regularization balance.
+- Change: HIDDEN_SIZES (16,) -> (8,)
+- Result: `val_cindex` **0.777263** at `best_step` **1000** vs best kept **0.779707**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and try the next experiment.
+
+## Run 120
+- Hypothesis: Changing residual MLP to (24,) may improve capacity/regularization balance.
+- Change: HIDDEN_SIZES (16,) -> (24,)
+- Result: `val_cindex` **0.782152** at `best_step` **750** vs best kept **0.779707**.
+- Decision: **keep**
+- Learning: This change improved enough to replace the kept baseline.
+- Next: Resume exploration from the new kept baseline.
+
+## Run 121
+- Hypothesis: Changing residual MLP to (32,) may improve capacity/regularization balance.
+- Change: HIDDEN_SIZES (24,) -> (32,)
+- Result: `val_cindex` **0.776382** at `best_step` **750** vs best kept **0.782152**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and try the next experiment.
+
+## Run 122
+- Hypothesis: Changing residual MLP to (48,) may improve capacity/regularization balance.
+- Change: HIDDEN_SIZES (24,) -> (48,)
+- Result: `val_cindex` **0.777100** at `best_step` **500** vs best kept **0.782152**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and try the next experiment.
+
+## Run 123
+- Hypothesis: Changing residual MLP to (64,) may improve capacity/regularization balance.
+- Change: HIDDEN_SIZES (24,) -> (64,)
+- Result: `val_cindex` **0.779780** at `best_step` **450** vs best kept **0.782152**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and try the next experiment.
+
+## Run 124
+- Hypothesis: Changing residual MLP to (128,) may improve capacity/regularization balance.
+- Change: HIDDEN_SIZES (24,) -> (128,)
+- Result: `val_cindex` **0.779476** at `best_step` **300** vs best kept **0.782152**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and try the next experiment.
+
+## Run 125
+- Hypothesis: Changing residual MLP to (32, 16) may improve capacity/regularization balance.
+- Change: HIDDEN_SIZES (24,) -> (32, 16)
+- Result: `val_cindex` **0.772880** at `best_step` **200** vs best kept **0.782152**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and try the next experiment.
+
+## Run 126
+- Hypothesis: Changing residual MLP to (24, 12) may improve capacity/regularization balance.
+- Change: HIDDEN_SIZES (24,) -> (24, 12)
+- Result: `val_cindex` **0.774376** at `best_step` **200** vs best kept **0.782152**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and try the next experiment.
+
+## Run 127
+- Hypothesis: Changing residual MLP to (16, 8) may improve capacity/regularization balance.
+- Change: HIDDEN_SIZES (24,) -> (16, 8)
+- Result: `val_cindex` **0.774151** at `best_step` **350** vs best kept **0.782152**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and try the next experiment.
+
+## Run 128
+- Hypothesis: Changing residual MLP to (24, 16) may improve capacity/regularization balance.
+- Change: HIDDEN_SIZES (24,) -> (24, 16)
+- Result: `val_cindex` **0.771426** at `best_step` **350** vs best kept **0.782152**.
+- Decision: **discard**; restored `train.py` from `last_kept_train.py`.
+- Learning: This change did not improve the kept baseline enough to justify replacing it.
+- Next: Restore the kept baseline and try the next experiment.

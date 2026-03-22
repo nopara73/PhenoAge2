@@ -42,8 +42,8 @@ from prepare import (
 # Hyperparameters (edit these directly, no CLI flags needed)
 # ---------------------------------------------------------------------------
 
-HIDDEN_SIZES = (64, 32)
-DROPOUT = 0.1
+HIDDEN_SIZES = (32, 16, 8)
+DROPOUT = 0.05
 LEARNING_RATE = 0.00195
 WEIGHT_DECAY = 0.00026
 EVAL_EVERY = 50
@@ -56,7 +56,7 @@ EARLY_STOP_MIN_TRAIN_SECONDS = 20.0
 class FeatureEncoder(nn.Module):
     def __init__(self):
         super().__init__()
-        self.output_dim = 25
+        self.output_dim = 16
         self.albumin_scale = float(ALBUMIN_G_PER_DL_TO_G_PER_L)
         self.creatinine_scale = float(CREATININE_MG_PER_DL_TO_UMOL_PER_L)
         self.glucose_scale = float(GLUCOSE_MG_PER_DL_TO_MMOL_PER_L)
@@ -95,7 +95,7 @@ class FeatureEncoder(nn.Module):
             + self.wbc_coef * wbc
         )
 
-        engineered = torch.stack(
+        return torch.stack(
             (
                 amp,
                 cep,
@@ -116,7 +116,6 @@ class FeatureEncoder(nn.Module):
             ),
             dim=1,
         )
-        return torch.cat((x, engineered), dim=1)
 
 
 class RiskMLP(nn.Module):
@@ -131,12 +130,16 @@ class RiskMLP(nn.Module):
         last_dim = input_dim
         for hidden_dim in hidden_sizes:
             layers.append(nn.Linear(last_dim, hidden_dim))
-            layers.append(nn.SiLU())
+            layers.append(nn.GELU())
             if dropout > 0:
                 layers.append(nn.Dropout(dropout))
             last_dim = hidden_dim
         layers.append(nn.Linear(last_dim, 1))
-        self.head = nn.Sequential(*layers)
+        self.residual_head = nn.Sequential(*layers)
+        self.base_weight = nn.Parameter(torch.tensor(1.0, dtype=torch.float32))
+        self.residual_scale = nn.Parameter(torch.tensor(0.1, dtype=torch.float32))
+        self.linear_scale = nn.Parameter(torch.tensor(0.05, dtype=torch.float32))
+        self.linear_skip = nn.Linear(input_dim, 1)
 
     def set_standardizer(self, mean: torch.Tensor, std: torch.Tensor) -> None:
         self.feature_mean.copy_(mean)
@@ -144,8 +147,11 @@ class RiskMLP(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         encoded = self.encoder(x)
+        base_score = encoded[:, 9]
         standardized = (encoded - self.feature_mean) / self.feature_std
-        return self.head(standardized).squeeze(-1)
+        residual = self.residual_head(standardized).squeeze(-1)
+        linear_skip = self.linear_skip(standardized).squeeze(-1)
+        return self.base_weight * base_score + self.residual_scale * residual + self.linear_scale * linear_skip
 
 
 def cox_partial_loss(risk_scores: torch.Tensor, times: torch.Tensor, events: torch.Tensor) -> torch.Tensor:
