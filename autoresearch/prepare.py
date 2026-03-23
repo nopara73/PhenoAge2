@@ -25,7 +25,7 @@ import torch
 # Frozen benchmark configuration (do not modify in the search loop)
 # ---------------------------------------------------------------------------
 
-TIME_BUDGET = 300
+TIME_BUDGET = 3
 DEV_VAL_FRACTION = 0.20
 DEV_VAL_SEED = 20260321
 SUPERIORITY_THRESHOLD = 0.01
