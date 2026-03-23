@@ -89,7 +89,7 @@ Higher `val_cindex` is better.
 5. Read out the results from `run.log`.
 6. If the run crashes, inspect the traceback, decide whether to fix or discard, and record the crash.
 7. Record the result in `results.tsv` without committing the TSV file.
-8. Keep the commit only if `val_cindex` improves meaningfully or achieves the same result with less complexity.
+8. Keep the candidate artifact when `val_cindex` improves by a small exploratory margin or achieves the same result with less complexity. The final held-out success rule remains the frozen `Delta >= +0.01` benchmark and must not be used as the search-loop keep threshold.
 9. Otherwise revert to the previous good state and continue.
 
 ## Priority Order
