@@ -14,24 +14,10 @@ import torch
 import torch.nn as nn
 
 from prepare import (
-    ALBUMIN_COEF,
-    ALBUMIN_G_PER_DL_TO_G_PER_L,
-    ALKALINE_PHOSPHATASE_COEF,
-    AGE_COEF,
-    CREATININE_COEF,
-    CREATININE_MG_PER_DL_TO_UMOL_PER_L,
-    CRP_MG_PER_DL_TO_MG_PER_L,
     DEFAULT_CANDIDATE_MODEL_PATH,
     DEV_VAL_SEED,
     FEATURE_COLUMNS,
-    GLUCOSE_COEF,
-    GLUCOSE_MG_PER_DL_TO_MMOL_PER_L,
-    LOG_CRP_COEF,
-    LYMPHOCYTE_PERCENT_COEF,
-    MEAN_CELL_VOLUME_COEF,
-    RDW_COEF,
     TIME_BUDGET,
-    WBC_COEF,
     evaluate_cindex,
     load_joined_rows,
     stratified_development_split,
@@ -43,88 +29,17 @@ from prepare import (
 # Hyperparameters (edit these directly, no CLI flags needed)
 # ---------------------------------------------------------------------------
 
-HIDDEN_SIZES = (32, 16)
-DROPOUT = 0.02
-LEARNING_RATE = 0.003
-WEIGHT_DECAY = 1e-4
+HIDDEN_SIZES = (16,)
+DROPOUT = 0.0
+LEARNING_RATE = 0.002
+WEIGHT_DECAY = 3e-4
 EVAL_EVERY = 500
 SEED = 42
 
 
-class FeatureEncoder(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.output_dim = 17
-        self.albumin_scale = float(ALBUMIN_G_PER_DL_TO_G_PER_L)
-        self.creatinine_scale = float(CREATININE_MG_PER_DL_TO_UMOL_PER_L)
-        self.glucose_scale = float(GLUCOSE_MG_PER_DL_TO_MMOL_PER_L)
-        self.crp_scale = float(CRP_MG_PER_DL_TO_MG_PER_L)
-        self.age_coef = float(AGE_COEF)
-        self.albumin_coef = float(ALBUMIN_COEF)
-        self.creatinine_coef = float(CREATININE_COEF)
-        self.glucose_coef = float(GLUCOSE_COEF)
-        self.log_crp_coef = float(LOG_CRP_COEF)
-        self.lymphocyte_coef = float(LYMPHOCYTE_PERCENT_COEF)
-        self.mcv_coef = float(MEAN_CELL_VOLUME_COEF)
-        self.rdw_coef = float(RDW_COEF)
-        self.alk_coef = float(ALKALINE_PHOSPHATASE_COEF)
-        self.wbc_coef = float(WBC_COEF)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        age = x[:, 0]
-        amp = x[:, 1] * self.albumin_scale
-        cep = x[:, 2] * self.creatinine_scale
-        sgp = x[:, 3] * self.glucose_scale
-        crp_mg_per_l = x[:, 4] * self.crp_scale
-        log_crp = torch.log(crp_mg_per_l.clamp_min(1e-6))
-        lymph = x[:, 5]
-        mcv = x[:, 6]
-        rdw = x[:, 7]
-        alk = x[:, 8]
-        wbc = x[:, 9]
-
-        pheno_no_age_xb = (
-            self.albumin_coef * amp
-            + self.creatinine_coef * cep
-            + self.glucose_coef * sgp
-            + self.log_crp_coef * log_crp
-            + self.lymphocyte_coef * lymph
-            + self.mcv_coef * mcv
-            + self.rdw_coef * rdw
-            + self.alk_coef * alk
-            + self.wbc_coef * wbc
-        )
-        pheno_with_age_xb = pheno_no_age_xb + self.age_coef * age
-
-        return torch.stack(
-            (
-                age,
-                amp,
-                cep,
-                sgp,
-                log_crp,
-                lymph,
-                mcv,
-                rdw,
-                alk,
-                wbc,
-                pheno_no_age_xb,
-                pheno_with_age_xb,
-                age * rdw,
-                age * log_crp,
-                amp * rdw,
-                sgp * log_crp,
-                wbc * log_crp,
-            ),
-            dim=1,
-        )
-
-
 class RiskMLP(nn.Module):
-    def __init__(self, hidden_sizes: tuple[int, ...], dropout: float):
+    def __init__(self, input_dim: int, hidden_sizes: tuple[int, ...], dropout: float):
         super().__init__()
-        self.encoder = FeatureEncoder()
-        input_dim = self.encoder.output_dim
         self.register_buffer("feature_mean", torch.zeros(input_dim, dtype=torch.float32))
         self.register_buffer("feature_std", torch.ones(input_dim, dtype=torch.float32))
 
@@ -137,20 +52,15 @@ class RiskMLP(nn.Module):
                 layers.append(nn.Dropout(dropout))
             last_dim = hidden_dim
         layers.append(nn.Linear(last_dim, 1))
-        self.residual_head = nn.Sequential(*layers)
-        self.base_weight = nn.Parameter(torch.tensor(1.0, dtype=torch.float32))
-        self.residual_scale = nn.Parameter(torch.tensor(0.1, dtype=torch.float32))
+        self.network = nn.Sequential(*layers)
 
     def set_standardizer(self, mean: torch.Tensor, std: torch.Tensor) -> None:
         self.feature_mean.copy_(mean)
         self.feature_std.copy_(std)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        encoded = self.encoder(x)
-        base_score = encoded[:, 11]
-        standardized = (encoded - self.feature_mean) / self.feature_std
-        residual = self.residual_head(standardized).squeeze(-1)
-        return self.base_weight * base_score + self.residual_scale * residual
+        standardized = (x - self.feature_mean) / self.feature_std
+        return self.network(standardized).squeeze(-1)
 
 
 def cox_partial_loss(risk_scores: torch.Tensor, times: torch.Tensor, events: torch.Tensor) -> torch.Tensor:
@@ -170,10 +80,9 @@ def save_scripted_model(model: nn.Module, path: Path) -> None:
 
 
 @torch.no_grad()
-def fit_standardizer_from_tensor(model: RiskMLP, train_x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    encoded = model.encoder(train_x).detach()
-    mean = encoded.mean(dim=0)
-    std = encoded.std(dim=0, unbiased=False)
+def fit_standardizer_from_tensor(train_x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    mean = train_x.mean(dim=0)
+    std = train_x.std(dim=0, unbiased=False)
     std = torch.where(std == 0.0, torch.ones_like(std), std)
     return mean, std
 
@@ -197,8 +106,8 @@ def main() -> None:
     train_times = torch.tensor(train_times_np, dtype=torch.float32, device=device)
     train_events = torch.tensor(train_events_np.astype("float32"), dtype=torch.float32, device=device)
 
-    model = RiskMLP(HIDDEN_SIZES, DROPOUT).to(device)
-    feature_mean, feature_std = fit_standardizer_from_tensor(model, train_x)
+    model = RiskMLP(len(FEATURE_COLUMNS), HIDDEN_SIZES, DROPOUT).to(device)
+    feature_mean, feature_std = fit_standardizer_from_tensor(train_x)
     model.set_standardizer(feature_mean, feature_std)
     optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
 
