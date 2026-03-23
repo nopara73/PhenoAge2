@@ -19,7 +19,9 @@ from prepare import (
     FEATURE_COLUMNS,
     TIME_BUDGET,
     evaluate_cindex,
+    harrell_c_index,
     load_joined_rows,
+    score_scripted_model,
     stratified_development_split,
     survival_arrays,
     tensorize_features,
@@ -35,6 +37,7 @@ LEARNING_RATE = 0.002
 WEIGHT_DECAY = 3e-4
 EVAL_EVERY = 500
 SEED = 42
+KEEP_IMPROVEMENT = 0.01
 
 
 class RiskMLP(nn.Module):
@@ -87,6 +90,12 @@ def fit_standardizer_from_tensor(train_x: torch.Tensor) -> tuple[torch.Tensor, t
     return mean, std
 
 
+def evaluate_saved_model_cindex(model_path: Path, rows: list[dict[str, str]]) -> float:
+    scores = score_scripted_model(model_path, rows, device="cpu")
+    times, events = survival_arrays(rows)
+    return harrell_c_index(times, events, scores)
+
+
 def main() -> None:
     t_start = time.time()
     torch.manual_seed(SEED)
@@ -98,6 +107,9 @@ def main() -> None:
 
     rows = load_joined_rows()
     train_rows, val_rows = stratified_development_split(rows, seed=DEV_VAL_SEED)
+    kept_val_cindex: float | None = None
+    if DEFAULT_CANDIDATE_MODEL_PATH.exists():
+        kept_val_cindex = evaluate_saved_model_cindex(DEFAULT_CANDIDATE_MODEL_PATH, val_rows)
 
     train_x = tensorize_features(train_rows, device)
     val_x = tensorize_features(val_rows, device)
@@ -115,6 +127,12 @@ def main() -> None:
     print(f"Feature count:     {len(FEATURE_COLUMNS)}")
     print(f"Train/val rows:    {len(train_rows)}/{len(val_rows)}")
     print(f"Time budget:       {TIME_BUDGET}s")
+    if kept_val_cindex is None:
+        print("Kept val_cindex:   none")
+        print("Keep threshold:    first successful run")
+    else:
+        print(f"Kept val_cindex:   {kept_val_cindex:.6f}")
+        print(f"Keep threshold:    {kept_val_cindex + KEEP_IMPROVEMENT:.6f}")
 
     best_state: dict[str, torch.Tensor] | None = None
     best_val_cindex = float("-inf")
@@ -165,9 +183,10 @@ def main() -> None:
 
     model.load_state_dict(best_state)
     model = model.to("cpu")
-    save_scripted_model(model, DEFAULT_CANDIDATE_MODEL_PATH)
-
     final_val_cindex = evaluate_cindex(model, val_rows, "cpu")
+    keep_candidate = kept_val_cindex is None or final_val_cindex >= kept_val_cindex + KEEP_IMPROVEMENT
+    if keep_candidate:
+        save_scripted_model(model, DEFAULT_CANDIDATE_MODEL_PATH)
     t_end = time.time()
     peak_vram_mb = (
         torch.cuda.max_memory_allocated() / 1024 / 1024
@@ -188,7 +207,11 @@ def main() -> None:
     print(f"num_steps:        {step}")
     print(f"num_params:       {num_params}")
     print(f"best_step:        {best_step}")
-    print(f"artifact_path:    {DEFAULT_CANDIDATE_MODEL_PATH}")
+    if kept_val_cindex is not None:
+        print(f"previous_kept:    {kept_val_cindex:.6f}")
+        print(f"required_cindex:  {kept_val_cindex + KEEP_IMPROVEMENT:.6f}")
+    print(f"keep_candidate:   {str(keep_candidate).lower()}")
+    print(f"artifact_path:    {DEFAULT_CANDIDATE_MODEL_PATH if keep_candidate else 'unchanged'}")
 
 
 if __name__ == "__main__":
