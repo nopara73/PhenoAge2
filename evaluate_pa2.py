@@ -7,10 +7,11 @@ from autoresearch.prepare import (
     DEFAULT_CANDIDATE_MODEL_PATH,
     DEFAULT_RESULT_PATH,
     build_result_summary,
-    compute_original_phenoage_scores,
+    candidate_feature_columns,
     get_rows_for_split,
     harrell_c_index,
     load_joined_rows,
+    load_candidate_metadata,
     score_scripted_model,
     survival_arrays,
     write_json,
@@ -19,7 +20,7 @@ from autoresearch.prepare import (
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Evaluate a PA2 candidate against original PhenoAge on the frozen held-out test set."
+        description="Evaluate the current BioAge candidate on the frozen held-out test set."
     )
     parser.add_argument(
         "--model",
@@ -45,31 +46,31 @@ def main() -> None:
     test_rows = get_rows_for_split(rows, "test")
     times, events = survival_arrays(test_rows)
 
-    phenoage_scores = compute_original_phenoage_scores(test_rows)
-    pa2_scores = score_scripted_model(args.model, test_rows, device="cpu")
+    test_scores = score_scripted_model(args.model, test_rows, device="cpu")
 
-    phenoage_c_index = harrell_c_index(times, events, phenoage_scores)
-    pa2_c_index = harrell_c_index(times, events, pa2_scores)
-    result = build_result_summary(pa2_c_index=pa2_c_index, phenoage_c_index=phenoage_c_index)
+    test_c_index = harrell_c_index(times, events, test_scores)
+    metadata = load_candidate_metadata(args.model)
+    feature_columns = candidate_feature_columns(args.model)
+    result = build_result_summary(test_c_index=test_c_index)
     result.update(
         {
-            "benchmark_dataset": "nhanes3-phenoage",
+            "benchmark_dataset": "nhanes3-bioage",
             "evaluation_split": "test",
             "participants": len(test_rows),
             "aging_related_deaths": int(events.sum()),
             "candidate_model_path": str(args.model),
-            "input_feature_count": 10,
-            "age_included_in_pa2_inputs": True,
+            "input_feature_count": len(feature_columns),
+            "age_included_in_inputs": bool(metadata["age_included_in_inputs"]),
+            "feature_columns": list(feature_columns),
         }
     )
 
     write_json(args.output, result)
 
     print("---")
-    print(f"phenoage_c_index: {result['phenoage_c_index']:.6f}")
-    print(f"pa2_c_index:      {result['pa2_c_index']:.6f}")
-    print(f"delta:            {result['delta']:.6f}")
-    print(f"verdict:          {result['verdict']}")
+    print(f"test_c_index:     {result['test_c_index']:.6f}")
+    print(f"feature_count:    {result['input_feature_count']}")
+    print(f"age_included:     {str(result['age_included_in_inputs']).lower()}")
     print(f"output_path:      {args.output}")
 
 

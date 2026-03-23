@@ -7,7 +7,7 @@ import random
 from pathlib import Path
 
 
-DEFAULT_DATA_DIR = Path(__file__).resolve().parent / "nhanes3-phenoage"
+DEFAULT_DATA_DIR = Path(__file__).resolve().parent / "nhanes3-bioage"
 DEFAULT_OUTCOMES_PATH = DEFAULT_DATA_DIR / "outcomes.csv"
 DEFAULT_SPLIT_PATH = DEFAULT_DATA_DIR / "frozen_split.csv"
 DEFAULT_MANIFEST_PATH = DEFAULT_DATA_DIR / "frozen_split_manifest.json"
@@ -19,10 +19,7 @@ REQUIRED_COLUMNS = ("SEQN", "aging_related_event")
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description=(
-            "Create a frozen participant-level development/test split for "
-            "nhanes3-phenoage."
-        )
+        description="Create a frozen participant-level development/test split for nhanes3-bioage."
     )
     parser.add_argument(
         "--outcomes",
@@ -137,6 +134,7 @@ def build_manifest(
         counts_by_label[split][label] += 1
 
     return {
+        "benchmark_dataset": "nhanes3-bioage",
         "source_outcomes": str(outcomes_path),
         "test_fraction": test_fraction,
         "random_seed": seed,

@@ -1,0 +1,22 @@
+{
+  "test_c_index": 0.8762691890538962,
+  "benchmark_dataset": "nhanes3-bioage",
+  "evaluation_split": "test",
+  "participants": 2083,
+  "aging_related_deaths": 586,
+  "candidate_model_path": "C:\\Users\\user\\Desktop\\PhenoAge2\\autoresearch\\candidate_bioage.pt",
+  "input_feature_count": 10,
+  "age_included_in_inputs": true,
+  "feature_columns": [
+    "HSAGEIR",
+    "AMP",
+    "CEP",
+    "SGP",
+    "CRP",
+    "LMPPCNT",
+    "MVPSI",
+    "RWP",
+    "APPSI",
+    "WCP"
+  ]
+}

@@ -1,38 +1,37 @@
-# PA2 Autoresearch
+# BioAge Autoresearch
 
-This folder adapts Karpathy's Autoresearch idea to the PhenoAge 2.0 benchmark.
+This folder adapts Karpathy's Autoresearch idea to a biomarker-subset search benchmark.
 
 ## In-Scope Files
 
 Read these files before starting:
 
-- `prepare.py` — fixed harness. Loads the frozen NHANES benchmark, provides the development split, computes C-index, and defines the final comparison contract. Do not modify.
-- `train.py` — the only file you edit. This is where candidate PA2 models are defined and trained.
+- `prepare.py` — fixed harness. Loads the frozen NHANES benchmark, provides the development split, computes C-index, and defines the final comparison contract. Do not modify during search.
+- `train.py` — the file you edit during search. This is where the active biomarker subset and training settings live.
 - `../evaluation-protocol.md` — the frozen benchmark rules.
 
 ## Fixed Benchmark Rules
 
-The benchmark is frozen. Do not redefine it.
+The benchmark is frozen. Do not redefine it during search.
 
-- Inputs for PA2 are limited to chronological age plus the 9 original PhenoAge biomarkers.
-- `HSAGEIR` is allowed as an input.
+- Inputs are limited to `HSAGEIR` plus the 57 biomarker candidates already present in `nhanes3-bioage/cohort.csv`.
+- Candidate subsets must be compared on the same frozen fasting cohort split.
 - No extra covariates, external data, or external labels.
 - No leakage from the held-out `test` set.
 - All preprocessing must be fit only on the training portion of each development-fold split.
 - The headline comparison metric is held-out `C-index`.
-- The only headline success category is `superior` as defined in `../evaluation-protocol.md`.
 
 ## Experimentation Goal
 
 The goal is simple: get the highest `val_cindex` on the fixed development validation split while preserving the frozen benchmark constraints.
 
-This is a survival-ranking problem, not a classification problem. Optimize the model to rank earlier aging-related deaths ahead of longer survivors.
+This is a survival-ranking problem, not a classification problem. Optimize the model to rank earlier aging-related deaths ahead of longer survivors by changing the selected biomarker subset before changing the scorer family.
 
 ## What You CAN Do
 
 - Modify `train.py`
-- Change model architecture
-- Change optimizer and loss
+- Change the selected biomarker subset
+- Change optimizer and loss only if needed after subset exploration stalls
 - Change hyperparameters
 - Simplify the model if it preserves or improves `val_cindex`
 
@@ -40,9 +39,10 @@ This is a survival-ranking problem, not a classification problem. Optimize the m
 
 - Modify `prepare.py`
 - Modify `../evaluation-protocol.md`
-- Use covariates outside chronological age plus the 9 PhenoAge biomarkers
+- Use covariates outside `HSAGEIR` plus the 57 candidate biomarkers in `nhanes3-bioage/cohort.csv`
 - Use `mortstat`, `time_months`, `permth_exm`, `ucod_leading`, or `aging_related_event` as model inputs
 - Touch the held-out `test` participants during search
+- Compare subsets on different participant sets
 
 ## Output Contract
 
@@ -60,7 +60,7 @@ best_step:        375
 artifact_path:    ...candidate_pa2.pt
 ```
 
-It must also save a scripted candidate model artifact at the path printed in `artifact_path`. The saved model must accept a raw feature tensor containing chronological age plus the 9 PhenoAge biomarkers and return one risk score per participant.
+It must also save a scripted candidate model artifact at the path printed in `artifact_path` plus sidecar metadata describing the selected feature columns and train-fitted imputation values.
 
 ## Logging Results
 
@@ -69,13 +69,15 @@ When an experiment is done, log it to `results.tsv` (tab-separated, not comma-se
 Use these columns:
 
 ```text
-commit	val_cindex	memory_gb	status	description
+commit	val_cindex	memory_gb	status	feature_count	selected_biomarkers	description
 ```
 
 - `commit`: short git hash
 - `val_cindex`: development validation C-index, use `0.000000` for crashes
 - `memory_gb`: peak memory in GB, use `0.0` for crashes
 - `status`: `keep`, `discard`, or `crash`
+- `feature_count`: total selected input count including age when present
+- `selected_biomarkers`: semicolon-separated biomarker codes
 - `description`: short description of the experiment
 
 Higher `val_cindex` is better.
@@ -83,18 +85,19 @@ Higher `val_cindex` is better.
 ## Experiment Loop
 
 1. Review the current git state.
-2. Modify only `train.py`.
+2. Modify `train.py`, primarily by changing the active biomarker subset.
 3. Commit the experiment.
 4. Run `uv run train.py > run.log 2>&1`.
 5. Read out the results from `run.log`.
 6. If the run crashes, inspect the traceback, decide whether to fix or discard, and record the crash.
 7. Record the result in `results.tsv` without committing the TSV file.
-8. Keep the candidate artifact when `val_cindex` improves by a small exploratory margin or achieves the same result with less complexity. The final held-out success rule remains the frozen `Delta >= +0.01` benchmark and must not be used as the search-loop keep threshold.
+8. Keep the candidate artifact when `val_cindex` improves by a small exploratory margin or achieves the same result with less complexity.
 9. Otherwise revert to the previous good state and continue.
 
 ## Priority Order
 
 1. Respect the frozen benchmark.
 2. Improve `val_cindex`.
-3. Prefer simpler models when performance is similar.
-4. Avoid brittle hacks.
+3. Prefer input-subset exploration before changing the scorer family.
+4. Prefer simpler models when performance is similar.
+5. Avoid brittle hacks.

@@ -1,0 +1,21 @@
+{
+  "benchmark_dataset": "nhanes3-bioage",
+  "source_outcomes": "C:\\Users\\user\\Desktop\\PhenoAge2\\nhanes3-bioage\\outcomes.csv",
+  "test_fraction": 0.2,
+  "random_seed": 20260321,
+  "participant_count": 10414,
+  "counts_by_split": {
+    "development": 8331,
+    "test": 2083
+  },
+  "aging_related_event_counts": {
+    "development": {
+      "0": 5987,
+      "1": 2344
+    },
+    "test": {
+      "0": 1497,
+      "1": 586
+    }
+  }
+}

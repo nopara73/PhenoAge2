@@ -1,7 +1,8 @@
-"""PA2 autoresearch training script.
+"""BioAge subset-search training script.
 
-This is the only file the autonomous loop edits. It trains a PhenoAge 2.0
-model on the frozen development split and reports validation C-index.
+This is the file the autoresearch loop edits. The benchmark contract lives in
+prepare.py; this script should vary biomarker subsets and training settings
+while keeping the scorer family simple and stable.
 """
 
 from __future__ import annotations
@@ -15,13 +16,17 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from prepare import (
+    AGE_COLUMN,
+    CANDIDATE_BIOMARKER_COLUMNS,
     DEFAULT_CANDIDATE_MODEL_PATH,
     DEV_VAL_SEED,
-    FEATURE_COLUMNS,
+    REFERENCE_PHENOAGE_BIOMARKERS,
     SUPERIORITY_THRESHOLD,
     TIME_BUDGET,
+    fit_feature_imputer,
     harrell_c_index,
     load_joined_rows,
+    save_candidate_metadata,
     score_scripted_model,
     stratified_development_split,
     survival_arrays,
@@ -44,20 +49,28 @@ PAIR_OVERSAMPLE = 8
 SEED = 42
 KEEP_IMPROVEMENT = 0.0005
 
-PAIR_INDICES = (
-    (0, 4),  # age x log-CRP
-    (0, 7),  # age x RDW
-    (0, 9),  # age x WBC
-    (0, 3),  # age x glucose
-    (1, 4),  # albumin x log-CRP
-    (2, 3),  # creatinine x glucose
-)
+INCLUDE_AGE = True
+SELECTED_BIOMARKERS = REFERENCE_PHENOAGE_BIOMARKERS
 
 
-def transformed_raw_features(x: torch.Tensor) -> torch.Tensor:
-    transformed = x.clone()
-    transformed[:, 4] = torch.log(torch.clamp(transformed[:, 4] * 10.0, min=1e-6))
-    return transformed
+def selected_feature_columns() -> tuple[str, ...]:
+    seen: set[str] = set()
+    for biomarker in SELECTED_BIOMARKERS:
+        if biomarker not in CANDIDATE_BIOMARKER_COLUMNS:
+            raise ValueError(f"Unexpected biomarker in SELECTED_BIOMARKERS: {biomarker}")
+        if biomarker in seen:
+            raise ValueError(f"Duplicate biomarker in SELECTED_BIOMARKERS: {biomarker}")
+        seen.add(biomarker)
+
+    if not SELECTED_BIOMARKERS:
+        raise ValueError("SELECTED_BIOMARKERS must contain at least one biomarker.")
+    if INCLUDE_AGE:
+        return (AGE_COLUMN, *SELECTED_BIOMARKERS)
+    return tuple(SELECTED_BIOMARKERS)
+
+
+FEATURE_COLUMNS = selected_feature_columns()
+CRP_INDEX = FEATURE_COLUMNS.index("CRP") if "CRP" in FEATURE_COLUMNS else None
 
 
 class FeatureNet(nn.Module):
@@ -94,16 +107,21 @@ class SparseInteractionAdditiveRiskModel(nn.Module):
         super().__init__()
         self.register_buffer("raw_mean", torch.zeros(input_dim, dtype=torch.float32))
         self.register_buffer("raw_std", torch.ones(input_dim, dtype=torch.float32))
+        self.crp_index = CRP_INDEX if CRP_INDEX is not None else -1
+        self.use_age_pairs = INCLUDE_AGE
 
         self.feature_nets = nn.ModuleList([FeatureNet(univariate_hidden) for _ in range(input_dim)])
-        self.pair_nets = nn.ModuleList([PairNet(pair_hidden, dropout) for _ in PAIR_INDICES])
+        pair_count = input_dim - 1 if self.use_age_pairs else 0
+        self.pair_nets = nn.ModuleList([PairNet(pair_hidden, dropout) for _ in range(pair_count)])
 
     def set_standardizer(self, raw_mean: torch.Tensor, raw_std: torch.Tensor) -> None:
         self.raw_mean.copy_(raw_mean)
         self.raw_std.copy_(raw_std)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        raw = transformed_raw_features(x)
+        raw = x.clone()
+        if self.crp_index >= 0:
+            raw[:, self.crp_index] = torch.log(torch.clamp(raw[:, self.crp_index] * 10.0, min=1e-6))
         standardized = (raw - self.raw_mean) / self.raw_std
 
         additive = torch.zeros(x.shape[0], dtype=x.dtype, device=x.device)
@@ -111,12 +129,10 @@ class SparseInteractionAdditiveRiskModel(nn.Module):
             additive = additive + feature_net(standardized[:, idx : idx + 1])
 
         pairwise = torch.zeros_like(additive)
-        pairwise = pairwise + self.pair_nets[0](standardized[:, [0, 4]])
-        pairwise = pairwise + self.pair_nets[1](standardized[:, [0, 7]])
-        pairwise = pairwise + self.pair_nets[2](standardized[:, [0, 9]])
-        pairwise = pairwise + self.pair_nets[3](standardized[:, [0, 3]])
-        pairwise = pairwise + self.pair_nets[4](standardized[:, [1, 4]])
-        pairwise = pairwise + self.pair_nets[5](standardized[:, [2, 3]])
+        if self.use_age_pairs:
+            for pair_idx, pair_net in enumerate(self.pair_nets):
+                feature_idx = pair_idx + 1
+                pairwise = pairwise + pair_net(standardized[:, [0, feature_idx]])
 
         return additive + pairwise
 
@@ -194,7 +210,9 @@ def save_scripted_model(model: nn.Module, path: Path) -> None:
 
 @torch.no_grad()
 def fit_standardizer(train_x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    raw = transformed_raw_features(train_x)
+    raw = train_x.clone()
+    if CRP_INDEX is not None:
+        raw[:, CRP_INDEX] = torch.log(torch.clamp(raw[:, CRP_INDEX] * 10.0, min=1e-6))
     raw_mean = raw.mean(dim=0)
     raw_std = raw.std(dim=0, unbiased=False)
     raw_std = torch.where(raw_std == 0.0, torch.ones_like(raw_std), raw_std)
@@ -235,8 +253,9 @@ def main() -> None:
     if DEFAULT_CANDIDATE_MODEL_PATH.exists():
         kept_val_cindex = evaluate_saved_model_cindex(DEFAULT_CANDIDATE_MODEL_PATH, val_rows)
 
-    train_x = tensorize_features(train_rows, device)
-    val_x = tensorize_features(val_rows, device)
+    imputation_values = fit_feature_imputer(train_rows, FEATURE_COLUMNS)
+    train_x = tensorize_features(train_rows, device, FEATURE_COLUMNS, imputation_values)
+    val_x = tensorize_features(val_rows, device, FEATURE_COLUMNS, imputation_values)
     train_times_np, train_events_np = survival_arrays(train_rows)
     val_times_np, val_events_np = survival_arrays(val_rows)
 
@@ -255,10 +274,13 @@ def main() -> None:
 
     print(f"Device:            {device}")
     print(f"Feature count:     {len(FEATURE_COLUMNS)}")
+    print(f"Age included:      {str(INCLUDE_AGE).lower()}")
+    print(f"Biomarker count:   {len(SELECTED_BIOMARKERS)}")
     print(f"Train/val rows:    {len(train_rows)}/{len(val_rows)}")
     print(f"Time budget:       {TIME_BUDGET}s")
-    print(f"Pair count:        {len(PAIR_INDICES)}")
+    print(f"Pair count:        {len(model.pair_nets)}")
     print(f"Headline delta:    {SUPERIORITY_THRESHOLD:.6f}")
+    print(f"Selected features: {', '.join(FEATURE_COLUMNS)}")
     if kept_val_cindex is None:
         print("Kept val_cindex:   none")
         print("Keep threshold:    first successful run")
@@ -326,6 +348,7 @@ def main() -> None:
     keep_candidate = kept_val_cindex is None or final_val_cindex >= kept_val_cindex + KEEP_IMPROVEMENT
     if keep_candidate:
         save_scripted_model(model, DEFAULT_CANDIDATE_MODEL_PATH)
+        save_candidate_metadata(DEFAULT_CANDIDATE_MODEL_PATH, FEATURE_COLUMNS, imputation_values)
     t_end = time.time()
     peak_vram_mb = (
         torch.cuda.max_memory_allocated() / 1024 / 1024

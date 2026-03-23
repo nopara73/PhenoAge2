@@ -1,12 +1,12 @@
-"""Fixed PA2 autoresearch harness.
+"""Fixed BioAge autoresearch harness.
 
-This file owns the immutable benchmark contract for PhenoAge 2.0 search:
-- frozen NHANES III package
+This file owns the immutable benchmark contract for biomarker-subset search:
+- frozen NHANES III fasting BioAge package
 - frozen development/test split
-- allowed input features
-- original PhenoAge baseline scorer
+- allowed candidate biomarker pool
 - development-only validation split helper
 - held-out C-index evaluation
+- saved-model metadata contract
 """
 
 from __future__ import annotations
@@ -14,7 +14,6 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import math
 import random
 from pathlib import Path
 
@@ -31,15 +30,16 @@ DEV_VAL_SEED = 20260321
 SUPERIORITY_THRESHOLD = 0.01
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DATA_DIR = REPO_ROOT / "nhanes3-phenoage"
+DATA_DIR = REPO_ROOT / "nhanes3-bioage"
 COHORT_PATH = DATA_DIR / "cohort.csv"
 OUTCOMES_PATH = DATA_DIR / "outcomes.csv"
 SPLIT_PATH = DATA_DIR / "frozen_split.csv"
-DEFAULT_CANDIDATE_MODEL_PATH = Path(__file__).resolve().parent / "candidate_pa2.pt"
-DEFAULT_RESULT_PATH = REPO_ROOT / "pa2_test_result.json"
+DEFAULT_CANDIDATE_MODEL_PATH = Path(__file__).resolve().parent / "candidate_bioage.pt"
+DEFAULT_CANDIDATE_METADATA_PATH = Path(__file__).resolve().parent / "candidate_bioage.metadata.json"
+DEFAULT_RESULT_PATH = REPO_ROOT / "bioage_test_result.json"
 
 AGE_COLUMN = "HSAGEIR"
-BIOMARKER_COLUMNS = (
+REFERENCE_PHENOAGE_BIOMARKERS = (
     "AMP",
     "CEP",
     "SGP",
@@ -50,36 +50,71 @@ BIOMARKER_COLUMNS = (
     "APPSI",
     "WCP",
 )
-FEATURE_COLUMNS = (AGE_COLUMN, *BIOMARKER_COLUMNS)
+
+CANDIDATE_BIOMARKER_COLUMNS = (
+    "ACP",
+    "AMP",
+    "APPSI",
+    "ASPSI",
+    "ATPSI",
+    "BCP",
+    "BUP",
+    "BXP",
+    "C1P",
+    "C3PSI",
+    "CAPSI",
+    "CEP",
+    "CLPSI",
+    "CRP",
+    "DWP",
+    "FEP",
+    "FOP",
+    "FRP",
+    "GHP",
+    "GRP",
+    "GRPPCNT",
+    "HDP",
+    "HGP",
+    "HTP",
+    "I1P",
+    "LDPSI",
+    "LMP",
+    "LMPPCNT",
+    "LUP",
+    "LYP",
+    "MCPSI",
+    "MHP",
+    "MOP",
+    "MOPPCNT",
+    "MVPSI",
+    "NAPSI",
+    "PBP",
+    "PLP",
+    "PSP",
+    "PVPSI",
+    "PXP",
+    "RCP",
+    "RWP",
+    "SCP",
+    "SEP",
+    "SGP",
+    "SKPSI",
+    "TBP",
+    "TCP",
+    "TGP",
+    "TIP",
+    "TPP",
+    "UAP",
+    "VAP",
+    "VCP",
+    "VEP",
+    "WCP",
+)
+
+VALID_FEATURE_COLUMNS = (AGE_COLUMN, *CANDIDATE_BIOMARKER_COLUMNS)
 TIME_COLUMN = "time_months"
 EVENT_COLUMN = "aging_related_event"
 ALLOWED_SPLITS = {"development", "test"}
-
-# ---------------------------------------------------------------------------
-# Original PhenoAge constants
-# ---------------------------------------------------------------------------
-
-ALBUMIN_G_PER_DL_TO_G_PER_L = 10.0
-CREATININE_MG_PER_DL_TO_UMOL_PER_L = 88.4
-GLUCOSE_MG_PER_DL_TO_MMOL_PER_L = 1.0 / 18.0182
-CRP_MG_PER_DL_TO_MG_PER_L = 10.0
-
-XB_INTERCEPT = -19.90667
-ALBUMIN_COEF = -0.03359355
-CREATININE_COEF = 0.009506491
-GLUCOSE_COEF = 0.1953192
-LOG_CRP_COEF = 0.09536762
-LYMPHOCYTE_PERCENT_COEF = -0.01199984
-MEAN_CELL_VOLUME_COEF = 0.02676401
-RDW_COEF = 0.3306156
-ALKALINE_PHOSPHATASE_COEF = 0.001868778
-WBC_COEF = 0.05542406
-AGE_COEF = 0.08035356
-MORTALITY_NUMERATOR_COEF = 1.51714
-MORTALITY_DENOMINATOR = 0.007692696
-PHENOAGE_LOG_COEF = 0.0055305
-PHENOAGE_DENOMINATOR = 0.090165
-PHENOAGE_INTERCEPT = 141.50225
 
 
 def read_csv_rows(path: Path) -> list[dict[str, str]]:
@@ -91,6 +126,21 @@ def read_csv_rows(path: Path) -> list[dict[str, str]]:
     if not rows:
         raise ValueError(f"{path} has no data rows.")
     return rows
+
+
+def validate_feature_columns(feature_columns: tuple[str, ...] | list[str]) -> tuple[str, ...]:
+    columns = tuple(feature_columns)
+    if not columns:
+        raise ValueError("feature_columns must contain at least one input column.")
+
+    seen: set[str] = set()
+    for column in columns:
+        if column in seen:
+            raise ValueError(f"Duplicate feature column requested: {column}")
+        if column not in VALID_FEATURE_COLUMNS:
+            raise ValueError(f"Unexpected feature column requested: {column}")
+        seen.add(column)
+    return columns
 
 
 def load_joined_rows() -> list[dict[str, str]]:
@@ -149,11 +199,26 @@ def stratified_development_split(
     return train_rows, val_rows
 
 
-def feature_matrix(rows: list[dict[str, str]]) -> np.ndarray:
-    return np.asarray(
-        [[float(row[column]) for column in FEATURE_COLUMNS] for row in rows],
+def _parse_feature_value(raw_value: str) -> float:
+    stripped = raw_value.strip()
+    if stripped == "":
+        return float("nan")
+    return float(stripped)
+
+
+def feature_matrix(
+    rows: list[dict[str, str]],
+    feature_columns: tuple[str, ...] | list[str],
+    imputation_values: np.ndarray | None = None,
+) -> np.ndarray:
+    columns = validate_feature_columns(feature_columns)
+    matrix = np.asarray(
+        [[_parse_feature_value(row[column]) for column in columns] for row in rows],
         dtype=np.float32,
     )
+    if imputation_values is not None:
+        matrix = impute_feature_matrix(matrix, imputation_values)
+    return matrix
 
 
 def survival_arrays(rows: list[dict[str, str]]) -> tuple[np.ndarray, np.ndarray]:
@@ -162,48 +227,38 @@ def survival_arrays(rows: list[dict[str, str]]) -> tuple[np.ndarray, np.ndarray]
     return times, events
 
 
-def fit_standardizer(rows: list[dict[str, str]]) -> tuple[np.ndarray, np.ndarray]:
-    features = feature_matrix(rows)
-    mean = features.mean(axis=0)
-    std = features.std(axis=0)
-    std[std == 0.0] = 1.0
-    return mean.astype(np.float32), std.astype(np.float32)
+def fit_feature_imputer(
+    rows: list[dict[str, str]],
+    feature_columns: tuple[str, ...] | list[str],
+) -> np.ndarray:
+    matrix = feature_matrix(rows, feature_columns)
+    with np.errstate(invalid="ignore"):
+        imputation_values = np.nanmean(matrix, axis=0)
+    imputation_values = np.where(np.isnan(imputation_values), 0.0, imputation_values)
+    return imputation_values.astype(np.float32)
 
 
-def tensorize_features(rows: list[dict[str, str]], device: torch.device | str) -> torch.Tensor:
-    return torch.tensor(feature_matrix(rows), dtype=torch.float32, device=device)
+def impute_feature_matrix(matrix: np.ndarray, imputation_values: np.ndarray) -> np.ndarray:
+    if matrix.shape[1] != len(imputation_values):
+        raise ValueError("Imputation values do not match matrix width.")
+    imputed = matrix.copy()
+    missing = np.isnan(imputed)
+    if np.any(missing):
+        imputed[missing] = np.take(imputation_values, np.where(missing)[1])
+    return imputed.astype(np.float32)
 
 
-def _compute_phenoage_xb(row: dict[str, str], include_age: bool) -> float:
-    xb = (
-        XB_INTERCEPT
-        + ALBUMIN_COEF * (float(row["AMP"]) * ALBUMIN_G_PER_DL_TO_G_PER_L)
-        + CREATININE_COEF * (float(row["CEP"]) * CREATININE_MG_PER_DL_TO_UMOL_PER_L)
-        + GLUCOSE_COEF * (float(row["SGP"]) * GLUCOSE_MG_PER_DL_TO_MMOL_PER_L)
-        + LOG_CRP_COEF * math.log(float(row["CRP"]) * CRP_MG_PER_DL_TO_MG_PER_L)
-        + LYMPHOCYTE_PERCENT_COEF * float(row["LMPPCNT"])
-        + MEAN_CELL_VOLUME_COEF * float(row["MVPSI"])
-        + RDW_COEF * float(row["RWP"])
-        + ALKALINE_PHOSPHATASE_COEF * float(row["APPSI"])
-        + WBC_COEF * float(row["WCP"])
+def tensorize_features(
+    rows: list[dict[str, str]],
+    device: torch.device | str,
+    feature_columns: tuple[str, ...] | list[str],
+    imputation_values: np.ndarray,
+) -> torch.Tensor:
+    return torch.tensor(
+        feature_matrix(rows, feature_columns, imputation_values=imputation_values),
+        dtype=torch.float32,
+        device=device,
     )
-    if include_age:
-        xb += AGE_COEF * float(row[AGE_COLUMN])
-    return xb
-
-
-def compute_phenoage(row: dict[str, str], include_age: bool = True) -> float:
-    xb = _compute_phenoage_xb(row, include_age=include_age)
-    mortality_component = MORTALITY_NUMERATOR_COEF * math.exp(xb) / MORTALITY_DENOMINATOR
-    return PHENOAGE_INTERCEPT + math.log(PHENOAGE_LOG_COEF * mortality_component) / PHENOAGE_DENOMINATOR
-
-
-def compute_original_phenoage_scores(rows: list[dict[str, str]]) -> np.ndarray:
-    return np.asarray([compute_phenoage(row, include_age=True) for row in rows], dtype=np.float64)
-
-
-def compute_phenoage_without_age_scores(rows: list[dict[str, str]]) -> np.ndarray:
-    return np.asarray([compute_phenoage(row, include_age=False) for row in rows], dtype=np.float64)
 
 
 def harrell_c_index(times: np.ndarray, events: np.ndarray, scores: np.ndarray) -> float:
@@ -244,34 +299,74 @@ def harrell_c_index(times: np.ndarray, events: np.ndarray, scores: np.ndarray) -
 
 
 @torch.no_grad()
-def evaluate_cindex(model: torch.nn.Module, rows: list[dict[str, str]], device: torch.device | str) -> float:
+def evaluate_cindex(
+    model: torch.nn.Module,
+    rows: list[dict[str, str]],
+    device: torch.device | str,
+    feature_columns: tuple[str, ...] | list[str],
+    imputation_values: np.ndarray,
+) -> float:
     model.eval()
-    scores = model(tensorize_features(rows, device)).reshape(-1).detach().cpu().numpy()
+    scores = model(tensorize_features(rows, device, feature_columns, imputation_values)).reshape(-1).detach().cpu().numpy()
     times, events = survival_arrays(rows)
     return harrell_c_index(times, events, scores)
+
+
+def candidate_metadata_path_for_model(model_path: Path) -> Path:
+    return model_path.with_suffix(".metadata.json")
+
+
+def save_candidate_metadata(
+    model_path: Path,
+    feature_columns: tuple[str, ...] | list[str],
+    imputation_values: np.ndarray,
+) -> None:
+    columns = validate_feature_columns(feature_columns)
+    metadata = {
+        "benchmark_dataset": "nhanes3-bioage",
+        "feature_columns": list(columns),
+        "input_feature_count": len(columns),
+        "age_included_in_inputs": AGE_COLUMN in columns,
+        "imputation_values": [float(value) for value in imputation_values],
+    }
+    metadata_path = candidate_metadata_path_for_model(model_path)
+    metadata_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+
+
+def load_candidate_metadata(model_path: Path) -> dict[str, object]:
+    metadata_path = candidate_metadata_path_for_model(model_path)
+    if not metadata_path.exists():
+        raise FileNotFoundError(f"Candidate metadata not found: {metadata_path}")
+    payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    feature_columns = validate_feature_columns(payload["feature_columns"])
+    if len(payload["imputation_values"]) != len(feature_columns):
+        raise ValueError("Candidate metadata contains mismatched imputation values.")
+    return payload
+
+
+def candidate_feature_columns(model_path: Path) -> tuple[str, ...]:
+    payload = load_candidate_metadata(model_path)
+    return validate_feature_columns(payload["feature_columns"])
+
+
+def candidate_imputation_values(model_path: Path) -> np.ndarray:
+    payload = load_candidate_metadata(model_path)
+    return np.asarray(payload["imputation_values"], dtype=np.float32)
 
 
 @torch.no_grad()
 def score_scripted_model(model_path: Path, rows: list[dict[str, str]], device: torch.device | str) -> np.ndarray:
     model = torch.jit.load(str(model_path), map_location=device)
     model.eval()
-    features = tensorize_features(rows, device)
+    feature_columns = candidate_feature_columns(model_path)
+    imputation_values = candidate_imputation_values(model_path)
+    features = tensorize_features(rows, device, feature_columns, imputation_values)
     return model(features).reshape(-1).detach().cpu().numpy()
 
 
-def final_verdict(delta: float) -> str:
-    if delta >= SUPERIORITY_THRESHOLD:
-        return "superior"
-    return "inferior"
-
-
-def build_result_summary(pa2_c_index: float, phenoage_c_index: float) -> dict[str, float | str]:
-    delta = pa2_c_index - phenoage_c_index
+def build_result_summary(test_c_index: float) -> dict[str, float]:
     return {
-        "phenoage_c_index": phenoage_c_index,
-        "pa2_c_index": pa2_c_index,
-        "delta": delta,
-        "verdict": final_verdict(delta),
+        "test_c_index": test_c_index,
     }
 
 
@@ -280,11 +375,11 @@ def write_json(path: Path, payload: dict[str, object]) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Validate the fixed PA2 autoresearch harness.")
+    parser = argparse.ArgumentParser(description="Validate the fixed BioAge autoresearch harness.")
     parser.add_argument(
         "--show-counts",
         action="store_true",
-        help="Print frozen split counts and baseline held-out C-index.",
+        help="Print frozen split counts for the BioAge subset-search benchmark.",
     )
     args = parser.parse_args()
 
@@ -297,9 +392,10 @@ def main() -> None:
     print(f"Test participants: {len(test_rows)}")
     print(f"Development train/val split: {len(train_rows)}/{len(val_rows)}")
     if args.show_counts:
-        times, events = survival_arrays(test_rows)
-        phenoage_c = harrell_c_index(times, events, compute_original_phenoage_scores(test_rows))
-        print(f"Held-out PhenoAge C-index: {phenoage_c:.6f}")
+        _, development_events = survival_arrays(development_rows)
+        _, test_events = survival_arrays(test_rows)
+        print(f"Development aging-related deaths: {int(development_events.sum())}")
+        print(f"Test aging-related deaths: {int(test_events.sum())}")
 
 
 if __name__ == "__main__":

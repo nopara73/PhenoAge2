@@ -1,0 +1,215 @@
+{
+  "package_name": "nhanes3-bioage",
+  "created_at_utc": "2026-03-23T14:37:59+00:00",
+  "inclusion_rule_code": "adult18_eligible_fast8_bioage57_plus_age_outcomes_and_strict_completecase",
+  "inclusion_rule_text": "Start from the mortality-eligible NHANES III adult analytic table (eligstat == 1, HSAGEIR >= 18), keep participants with PHPFAST >= 8, write the fasting cohort/outcomes pair, then write a second pair after one complete-case filter across HSAGEIR, the 57 BioAge biomarkers, and the 6 outcomes fields.",
+  "source_version": {
+    "survey": "NHANES III",
+    "mortality_linkage": "PUBLIC-USE LINKED MORTALITY FOLLOW-UP THROUGH DECEMBER 31, 2019"
+  },
+  "source_files": [
+    "nhanes3/1a/adult.dat",
+    "nhanes3/1a/adult.sas",
+    "nhanes3/1a/lab.dat",
+    "nhanes3/1a/lab.sas",
+    "nhanes3/mortality/NHANES_III_MORT_2019_PUBLIC.dat",
+    "nhanes3/mortality/SAS_ReadInProgramAllSurveys.sas"
+  ],
+  "expected_columns": {
+    "cohort.csv": [
+      "SEQN",
+      "HSAGEIR",
+      "ACP",
+      "AMP",
+      "APPSI",
+      "ASPSI",
+      "ATPSI",
+      "BCP",
+      "BUP",
+      "BXP",
+      "C1P",
+      "C3PSI",
+      "CAPSI",
+      "CEP",
+      "CLPSI",
+      "CRP",
+      "DWP",
+      "FEP",
+      "FOP",
+      "FRP",
+      "GHP",
+      "GRP",
+      "GRPPCNT",
+      "HDP",
+      "HGP",
+      "HTP",
+      "I1P",
+      "LDPSI",
+      "LMP",
+      "LMPPCNT",
+      "LUP",
+      "LYP",
+      "MCPSI",
+      "MHP",
+      "MOP",
+      "MOPPCNT",
+      "MVPSI",
+      "NAPSI",
+      "PBP",
+      "PLP",
+      "PSP",
+      "PVPSI",
+      "PXP",
+      "RCP",
+      "RWP",
+      "SCP",
+      "SEP",
+      "SGP",
+      "SKPSI",
+      "TBP",
+      "TCP",
+      "TGP",
+      "TIP",
+      "TPP",
+      "UAP",
+      "VAP",
+      "VCP",
+      "VEP",
+      "WCP"
+    ],
+    "outcomes.csv": [
+      "SEQN",
+      "permth_exm",
+      "time_months",
+      "mortstat",
+      "ucod_leading",
+      "aging_related_event"
+    ],
+    "cohort_all_fields_required.csv": [
+      "SEQN",
+      "HSAGEIR",
+      "ACP",
+      "AMP",
+      "APPSI",
+      "ASPSI",
+      "ATPSI",
+      "BCP",
+      "BUP",
+      "BXP",
+      "C1P",
+      "C3PSI",
+      "CAPSI",
+      "CEP",
+      "CLPSI",
+      "CRP",
+      "DWP",
+      "FEP",
+      "FOP",
+      "FRP",
+      "GHP",
+      "GRP",
+      "GRPPCNT",
+      "HDP",
+      "HGP",
+      "HTP",
+      "I1P",
+      "LDPSI",
+      "LMP",
+      "LMPPCNT",
+      "LUP",
+      "LYP",
+      "MCPSI",
+      "MHP",
+      "MOP",
+      "MOPPCNT",
+      "MVPSI",
+      "NAPSI",
+      "PBP",
+      "PLP",
+      "PSP",
+      "PVPSI",
+      "PXP",
+      "RCP",
+      "RWP",
+      "SCP",
+      "SEP",
+      "SGP",
+      "SKPSI",
+      "TBP",
+      "TCP",
+      "TGP",
+      "TIP",
+      "TPP",
+      "UAP",
+      "VAP",
+      "VCP",
+      "VEP",
+      "WCP"
+    ],
+    "outcomes_all_fields_required.csv": [
+      "SEQN",
+      "permth_exm",
+      "time_months",
+      "mortstat",
+      "ucod_leading",
+      "aging_related_event"
+    ]
+  },
+  "row_counts": {
+    "cohort.csv": 10414,
+    "outcomes.csv": 10414,
+    "cohort_all_fields_required.csv": 3432,
+    "outcomes_all_fields_required.csv": 3432,
+    "fasting_pair_equal": true,
+    "strict_pair_equal": true
+  },
+  "death_counts": {
+    "fasting_all_cause": 4116,
+    "fasting_aging_related": 2930,
+    "strict_all_cause": 3432,
+    "strict_aging_related": 2450
+  },
+  "cohort_outcomes_seqn_match": {
+    "fasting_pair": true,
+    "strict_pair": true
+  },
+  "time_months_definition": "Copied directly from permth_exm.",
+  "endpoint_definition": {
+    "included_ucod_buckets": [
+      "UCOD_001",
+      "UCOD_002",
+      "UCOD_003",
+      "UCOD_005",
+      "UCOD_006",
+      "UCOD_007",
+      "UCOD_009"
+    ],
+    "excluded_ucod_buckets": [
+      "UCOD_004",
+      "UCOD_008",
+      "UCOD_010"
+    ],
+    "mortstat_1_non_aging_death_maps_to_0": true,
+    "mortstat_0_maps_to_0": true
+  },
+  "files": {
+    "cohort.csv": {
+      "sha256": "3c256c21956741e0be89e0a3f19faa0dce738802df9f42f935816c844ff9b3a6"
+    },
+    "outcomes.csv": {
+      "sha256": "3f03a013417007a322e47594e781d5cf3ea11203819e30ad8ad90beb77dc3ab1"
+    },
+    "cohort_all_fields_required.csv": {
+      "sha256": "c0f7c30865b6775a16ec017a00aa9893968e0dbf1c4c2306cc8695f40c169276"
+    },
+    "outcomes_all_fields_required.csv": {
+      "sha256": "4a06da5bd082aa3d62b77c40afc8e1829865d231c34ad8894ab289752f977e38"
+    },
+    "README.md": {
+      "sha256": "88b400ddc5b3d1d1cf44ed9b9dc93677755f541fd95480bdacdf9eac59282290"
+    },
+    "data_dictionary.md": {
+      "sha256": "1ce8d894537ec61ce756ff38c4d2b98c5b91ec9fff582e1d8fdd0673396cad12"
+    }
+  }
+}
