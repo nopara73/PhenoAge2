@@ -1,8 +1,15 @@
-"""PA2 ageless restart baseline: exact ageless PhenoAge formula.
+"""PA2 ageless restart experiment: one-sided guards with smooth immune tails.
 
 `train.py` now defines a fixed, scripted scoring rule that:
 
 - uses the repo-authoritative PhenoAge biomarker constants from `pheno-age-formula.md`
+- replaces the raw linear RDW term with a smooth lower floor so very low RDW
+  stops receiving extra reward
+- replaces the raw linear WBC term with a broader smooth lower floor so very low
+  WBC stops receiving extra reward without a hard kink
+- caps albumin benefit above `50 g/L`
+- caps lymphocyte-percent benefit above `60%` and adds a mild smooth penalty
+  for higher values
 - excludes chronological age entirely
 - uses no learned weights, optimizer, or training loop
 - emits a valid TorchScript artifact accepting raw `[N, 9]` biomarker tensors
@@ -15,6 +22,7 @@ from pathlib import Path
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from prepare import (
     DEFAULT_CANDIDATE_MODEL_PATH,
@@ -57,10 +65,28 @@ PHENOAGE_LOG_COEF = 0.0055305
 PHENOAGE_DENOMINATOR = 0.090165
 PHENOAGE_INTERCEPT = 141.50225
 MIN_POSITIVE_CRP_MG_PER_L = 1e-6
+RDW_LOW_RISK_FLOOR = 11.4
+RDW_FLOOR_SMOOTHING = 0.25
+WBC_LOW_RISK_FLOOR = 3.5
+WBC_FLOOR_SMOOTHING = 0.8
+ALBUMIN_BENEFIT_CAP_G_PER_L = 50.0
+LYMPHOCYTE_PERCENT_BENEFIT_CAP = 60.0
+LYMPHOCYTE_UPPER_TAIL_PENALTY = 0.012
+LYMPHOCYTE_UPPER_TAIL_SMOOTHING = 3.0
+
+
+def smooth_floor(value: torch.Tensor, threshold: float, scale: float) -> torch.Tensor:
+    """Smooth approximation to max(value, threshold)."""
+    return threshold + scale * F.softplus((value - threshold) / scale)
+
+
+def smooth_excess(value: torch.Tensor, threshold: float, scale: float) -> torch.Tensor:
+    """Smooth approximation to max(value - threshold, 0)."""
+    return scale * F.softplus((value - threshold) / scale)
 
 
 class AgelessPhenoAgeScore(nn.Module):
-    """Exact ageless PhenoAge score computed from the 9 biomarker inputs."""
+    """Ageless PhenoAge score with simple one-sided biomarker guards and smooth tails."""
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         albumin_g_per_l = x[:, AMP_INDEX] * ALBUMIN_G_PER_DL_TO_G_PER_L
@@ -68,17 +94,28 @@ class AgelessPhenoAgeScore(nn.Module):
         glucose_mmol_per_l = x[:, SGP_INDEX] * GLUCOSE_MG_PER_DL_TO_MMOL_PER_L
         crp_mg_per_l = torch.clamp(x[:, CRP_INDEX] * CRP_MG_PER_DL_TO_MG_PER_L, min=MIN_POSITIVE_CRP_MG_PER_L)
 
+        albumin_effective = torch.clamp(albumin_g_per_l, max=ALBUMIN_BENEFIT_CAP_G_PER_L)
+        lymphocyte_effective = torch.clamp(x[:, LMPPCNT_INDEX], max=LYMPHOCYTE_PERCENT_BENEFIT_CAP)
+        lymphocyte_upper_tail = smooth_excess(
+            x[:, LMPPCNT_INDEX],
+            LYMPHOCYTE_PERCENT_BENEFIT_CAP,
+            LYMPHOCYTE_UPPER_TAIL_SMOOTHING,
+        )
+        rdw_effective = smooth_floor(x[:, RWP_INDEX], RDW_LOW_RISK_FLOOR, RDW_FLOOR_SMOOTHING)
+        wbc_effective = smooth_floor(x[:, WCP_INDEX], WBC_LOW_RISK_FLOOR, WBC_FLOOR_SMOOTHING)
+
         xb = (
             XB_INTERCEPT
-            + ALBUMIN_COEF * albumin_g_per_l
+            + ALBUMIN_COEF * albumin_effective
             + CREATININE_COEF * creatinine_umol_per_l
             + GLUCOSE_COEF * glucose_mmol_per_l
             + LOG_CRP_COEF * torch.log(crp_mg_per_l)
-            + LYMPHOCYTE_PERCENT_COEF * x[:, LMPPCNT_INDEX]
+            + LYMPHOCYTE_PERCENT_COEF * lymphocyte_effective
+            + LYMPHOCYTE_UPPER_TAIL_PENALTY * lymphocyte_upper_tail
             + MEAN_CELL_VOLUME_COEF * x[:, MVPSI_INDEX]
-            + RDW_COEF * x[:, RWP_INDEX]
+            + RDW_COEF * rdw_effective
             + ALKALINE_PHOSPHATASE_COEF * x[:, APPSI_INDEX]
-            + WBC_COEF * x[:, WCP_INDEX]
+            + WBC_COEF * wbc_effective
         )
         mortality_component = MORTALITY_NUMERATOR_COEF * torch.exp(xb) / MORTALITY_DENOMINATOR
         phenoage = PHENOAGE_INTERCEPT + torch.log(PHENOAGE_LOG_COEF * mortality_component) / PHENOAGE_DENOMINATOR
@@ -106,7 +143,7 @@ def main() -> None:
     num_params = sum(param.numel() for param in model.parameters())
 
     print("Device:            cpu")
-    print("Architecture:      ageless_phenoage_formula")
+    print("Architecture:      ageless_phenoage_with_smooth_immune_tails")
     print(f"Feature count:     {len(FEATURE_COLUMNS)}")
     print(f"Development rows:  {len(development_rows)}")
     print(f"Time budget:       {TIME_BUDGET}s")
@@ -117,7 +154,7 @@ def main() -> None:
     print("peak_vram_mb:     0.0")
     print("num_steps:        0")
     print(f"num_params:       {num_params}")
-    print("stop_reason:      exact_formula")
+    print("stop_reason:      smooth_immune_tail_hypothesis")
     print(f"artifact_path:    {artifact_path}")
 
 

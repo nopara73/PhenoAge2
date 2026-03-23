@@ -15,7 +15,7 @@ HEADER = ["commit", "development_cindex", "memory_gb", "status", "description"]
 
 
 def parse_metric(text: str, name: str) -> float:
-    pattern = rf"^{re.escape(name)}:\s+([0-9.+-]+)$"
+    pattern = rf"^{re.escape(name)}:\s*([0-9.+-]+)$"
     matches = re.findall(pattern, text, flags=re.MULTILINE)
     if not matches:
         raise ValueError(f"Could not find `{name}` in run log.")
