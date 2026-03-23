@@ -97,6 +97,11 @@ TIER_A_NEAR_BEST_DELTA = 0.002
 TIER_B_PROMOTION_DELTA = 0.001
 LANE_PATIENCE_EVALUATIONS = 36
 GROUP_MOVE_MAX_CHANGE = 3
+BANDIT_ARMS = ("frontier_local", "size_winner_local", "root_seed_local", "random_restart")
+BANDIT_EPSILON = 0.20
+BANDIT_PULLS_PER_LANE_PER_ROUND = 2
+BANDIT_PARENT_LIMIT = 2
+BANDIT_RANDOM_RESTARTS_PER_PULL = 3
 
 BIOLOGICAL_GROUPS = {
     "liver_proteins": (
@@ -300,6 +305,7 @@ class Candidate:
     parent_id: str | None
     operator: str
     seed_family: str
+    proposal_arm: str
     rationale: str
     created_round: int
     tiers: dict[str, list[dict[str, Any]]] = field(
@@ -317,6 +323,7 @@ class Candidate:
             "parent_id": self.parent_id,
             "operator": self.operator,
             "seed_family": self.seed_family,
+            "proposal_arm": self.proposal_arm,
             "rationale": self.rationale,
             "created_round": self.created_round,
             "tiers": self.tiers,
@@ -334,6 +341,7 @@ class Candidate:
             parent_id=payload["parent_id"],
             operator=payload["operator"],
             seed_family=payload["seed_family"],
+            proposal_arm=payload.get("proposal_arm", "legacy"),
             rationale=payload["rationale"],
             created_round=payload["created_round"],
         )
@@ -395,6 +403,12 @@ class CampaignState:
     test_evaluated: bool = False
     initialized_seeds: bool = False
     latest_status: dict[str, Any] = field(default_factory=dict)
+    bandit_stats: dict[str, dict[str, dict[str, float]]] = field(
+        default_factory=lambda: {
+            lane: {arm: {"pulls": 0.0, "total_reward": 0.0} for arm in BANDIT_ARMS}
+            for lane in LANE_ORDER
+        }
+    )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -409,6 +423,7 @@ class CampaignState:
             "test_evaluated": self.test_evaluated,
             "initialized_seeds": self.initialized_seeds,
             "latest_status": self.latest_status,
+            "bandit_stats": self.bandit_stats,
         }
 
     @classmethod
@@ -429,6 +444,17 @@ class CampaignState:
         state.test_evaluated = bool(payload.get("test_evaluated", False))
         state.initialized_seeds = bool(payload.get("initialized_seeds", False))
         state.latest_status = dict(payload.get("latest_status", {}))
+        raw_bandit_stats = payload.get("bandit_stats", {})
+        state.bandit_stats = {
+            lane: {
+                arm: {
+                    "pulls": float(raw_bandit_stats.get(lane, {}).get(arm, {}).get("pulls", 0.0)),
+                    "total_reward": float(raw_bandit_stats.get(lane, {}).get(arm, {}).get("total_reward", 0.0)),
+                }
+                for arm in BANDIT_ARMS
+            }
+            for lane in LANE_ORDER
+        }
         return state
 
 
@@ -635,6 +661,8 @@ def load_result_cache() -> dict[tuple[str, tuple[str, ...], str, str], TrainingR
             biomarkers = tuple(sorted(value for value in selected_raw.split(";") if value))
             if not biomarkers:
                 continue
+            if not biomarkers_within_feature_cap(LANE_CONFIGS[lane].include_age, biomarkers):
+                continue
 
             try:
                 requested_budget_s = float(requested_budget_raw)
@@ -662,6 +690,105 @@ def load_result_cache() -> dict[tuple[str, tuple[str, ...], str, str], TrainingR
                 cache_hit=True,
             )
     return cache
+
+
+def max_result_candidate_index() -> int:
+    if not RESULTS_PATH.exists():
+        return 0
+
+    max_index = 0
+    with RESULTS_PATH.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle, delimiter="\t")
+        for row in reader:
+            if not row:
+                continue
+            description_fields = parse_description_fields(row.get("description", ""))
+            candidate_id = description_fields.get("candidate_id")
+            if candidate_id is None or not candidate_id.startswith("cand_"):
+                continue
+            try:
+                max_index = max(max_index, int(candidate_id.split("_", 1)[1]))
+            except ValueError:
+                continue
+    return max_index
+
+
+def recover_state_from_results() -> CampaignState:
+    state = CampaignState(version=STATE_VERSION)
+    if not RESULTS_PATH.exists():
+        return state
+
+    with RESULTS_PATH.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle, delimiter="\t")
+        for row in reader:
+            if not row:
+                continue
+            description_fields = parse_description_fields(row.get("description", ""))
+            candidate_id = description_fields.get("candidate_id")
+            lane = description_fields.get("lane")
+            tier = description_fields.get("tier")
+            if candidate_id is None or lane not in LANE_ORDER or tier not in TIER_ORDER:
+                continue
+
+            biomarkers = tuple(sorted(value for value in row.get("selected_biomarkers", "").split(";") if value))
+            if not biomarkers or not biomarkers_within_feature_cap(LANE_CONFIGS[lane].include_age, biomarkers):
+                continue
+
+            parent_id = description_fields.get("parent_id")
+            if parent_id in {None, "", "root"}:
+                parent_id = None
+
+            candidate = state.candidates.get(candidate_id)
+            if candidate is None:
+                candidate = Candidate(
+                    candidate_id=candidate_id,
+                    lane=lane,
+                    biomarkers=biomarkers,
+                    parent_id=parent_id,
+                    operator=description_fields.get("operator", "recovered"),
+                    seed_family=description_fields.get("seed_family", "recovered"),
+                    proposal_arm=description_fields.get("proposal_arm", "legacy"),
+                    rationale="Recovered from results log.",
+                    created_round=0,
+                )
+                state.candidates[candidate_id] = candidate
+
+            try:
+                val_cindex = float(row.get("val_cindex", "0.0"))
+                peak_vram_mb = float(row.get("memory_gb", "0.0")) * 1024.0
+                requested_budget_s = float(description_fields.get("requested_budget_s", "0.0"))
+                actual_training_s = float(description_fields.get("actual_training_s", "0.0"))
+            except ValueError:
+                continue
+
+            candidate.tiers[tier].append(
+                {
+                    "timestamp": now_utc(),
+                    "status": row.get("status", STATUS_KEEP),
+                    "promotion": description_fields.get("promotion", "recovered"),
+                    "requested_budget_s": requested_budget_s,
+                    "actual_training_s": actual_training_s,
+                    "val_cindex": val_cindex,
+                    "peak_vram_mb": peak_vram_mb,
+                    "num_steps": 0,
+                    "num_params": 0,
+                    "best_step": -1,
+                    "artifact_path": None,
+                    "cache_hit": str(description_fields.get("cache_hit", "false")).lower() == "true",
+                    "error": description_fields.get("error"),
+                }
+            )
+            state.evaluation_count += 1
+
+    state.next_candidate_index = max_result_candidate_index() + 1
+    state.initialized_seeds = False
+    for lane in LANE_ORDER:
+        refresh_frontier(state, lane)
+        winner = choose_lane_winner(state, lane)
+        state.lane_winner_ids[lane] = None if winner is None else winner.candidate_id
+    overall_winner = choose_overall_winner(state)
+    state.overall_winner_id = None if overall_winner is None else overall_winner.candidate_id
+    return state
 
 
 def cox_partial_loss(risk_scores: torch.Tensor, times: torch.Tensor, events: torch.Tensor) -> torch.Tensor:
@@ -891,13 +1018,16 @@ def train_subset(
 
 def load_or_create_state(fresh: bool) -> CampaignState:
     if fresh or not CAMPAIGN_STATE_PATH.exists():
-        return CampaignState(version=STATE_VERSION)
+        state = CampaignState(version=STATE_VERSION)
+        state.next_candidate_index = max(state.next_candidate_index, max_result_candidate_index() + 1)
+        return state
     payload = json.loads(CAMPAIGN_STATE_PATH.read_text(encoding="utf-8"))
     state = CampaignState.from_dict(payload)
     if state.version != STATE_VERSION:
         raise RuntimeError(
             f"Unsupported campaign state version {state.version}; expected {STATE_VERSION}."
         )
+    state.next_candidate_index = max(state.next_candidate_index, max_result_candidate_index() + 1)
     return state
 
 
@@ -1050,6 +1180,7 @@ def record_evaluation(
         extra_fields={
             "error": error or "none",
             "cache_hit": "false" if result is None else str(result.cache_hit).lower(),
+            "proposal_arm": candidate.proposal_arm,
         },
     )
 
@@ -1311,6 +1442,7 @@ def initialize_seeds(state: CampaignState, rng: random.Random) -> None:
                 parent_id=None,
                 operator=spec["operator"],
                 seed_family=spec["seed_family"],
+                proposal_arm="seed_init",
                 rationale=spec["rationale"],
                 created_round=0,
             )
@@ -1710,11 +1842,234 @@ def lane_stalled(state: CampaignState, lane: str) -> bool:
     return max(scores) - min(scores) < TIER_A_BORDERLINE_DELTA
 
 
+def bandit_arm_stats(state: CampaignState, lane: str, arm: str) -> dict[str, float]:
+    return state.bandit_stats.setdefault(lane, {}).setdefault(
+        arm,
+        {"pulls": 0.0, "total_reward": 0.0},
+    )
+
+
+def bandit_arm_mean_reward(state: CampaignState, lane: str, arm: str) -> float:
+    stats = bandit_arm_stats(state, lane, arm)
+    pulls = stats["pulls"]
+    if pulls <= 0:
+        return float("-inf")
+    return stats["total_reward"] / pulls
+
+
+def choose_bandit_arm(state: CampaignState, lane: str, rng: random.Random) -> str:
+    untried = [arm for arm in BANDIT_ARMS if bandit_arm_stats(state, lane, arm)["pulls"] <= 0]
+    if untried:
+        return rng.choice(untried)
+    if rng.random() < BANDIT_EPSILON:
+        return rng.choice(list(BANDIT_ARMS))
+    ranked = sorted(
+        BANDIT_ARMS,
+        key=lambda arm: (
+            bandit_arm_mean_reward(state, lane, arm),
+            -bandit_arm_stats(state, lane, arm)["pulls"],
+            arm,
+        ),
+        reverse=True,
+    )
+    return ranked[0]
+
+
+def update_bandit_arm(state: CampaignState, lane: str, arm: str, reward: float) -> None:
+    stats = bandit_arm_stats(state, lane, arm)
+    stats["pulls"] += 1.0
+    stats["total_reward"] += max(0.0, reward)
+
+
+def sort_candidates_by_search_strength(candidates: list[Candidate]) -> list[Candidate]:
+    return sorted(
+        candidates,
+        key=lambda candidate: (
+            candidate.mean_score("C") if candidate.mean_score("C") is not None else float("-inf"),
+            candidate.mean_score("B") if candidate.mean_score("B") is not None else float("-inf"),
+            candidate.mean_score("A") if candidate.mean_score("A") is not None else float("-inf"),
+            -candidate.feature_count(),
+            candidate.candidate_id,
+        ),
+        reverse=True,
+    )
+
+
+def size_winner_parents(state: CampaignState, lane: str) -> list[Candidate]:
+    winners: list[Candidate] = []
+    seen: set[str] = set()
+    for feature_count in range(1, MAX_INPUT_FEATURES + 1):
+        winner = best_candidate_for_feature_count(state, lane, feature_count)
+        if winner is None or winner.candidate_id in seen:
+            continue
+        winners.append(winner)
+        seen.add(winner.candidate_id)
+    return sort_candidates_by_search_strength(winners)
+
+
+def root_seed_parents(state: CampaignState, lane: str) -> list[Candidate]:
+    candidates = [
+        candidate
+        for candidate in state.candidates.values()
+        if candidate.lane == lane
+        and candidate.parent_id is None
+        and candidate_within_feature_cap(candidate)
+        and (
+            candidate.mean_score("C") is not None
+            or candidate.mean_score("B") is not None
+            or candidate.mean_score("A") is not None
+        )
+    ]
+    return sort_candidates_by_search_strength(candidates)
+
+
+def random_restart_size(include_age: bool, rng: random.Random) -> int:
+    max_biomarkers = max_biomarker_count(include_age)
+    if max_biomarkers <= 1:
+        return 1
+    lower = min(3, max_biomarkers)
+    upper = max(lower, max_biomarkers)
+    if rng.random() < 0.65:
+        return rng.randint(lower, upper)
+    return rng.randint(1, max_biomarkers)
+
+
+def create_random_restart_candidates(
+    state: CampaignState,
+    lane: str,
+    rng: random.Random,
+    round_index: int,
+    count: int = BANDIT_RANDOM_RESTARTS_PER_PULL,
+) -> list[Candidate]:
+    include_age = LANE_CONFIGS[lane].include_age
+    existing_signatures = {candidate.signature() for candidate in state.candidates.values()}
+    proposals: list[Candidate] = []
+    attempts = 0
+    max_attempts = max(count * 8, 16)
+    while len(proposals) < count and attempts < max_attempts:
+        attempts += 1
+        subset_size = random_restart_size(include_age, rng)
+        biomarkers = tuple(sorted(rng.sample(CANDIDATE_BIOMARKER_COLUMNS, k=subset_size)))
+        if not biomarkers_within_feature_cap(include_age, biomarkers):
+            continue
+        signature = candidate_signature(lane, biomarkers)
+        if signature in existing_signatures:
+            continue
+        candidate = Candidate(
+            candidate_id=new_candidate_id(state),
+            lane=lane,
+            biomarkers=biomarkers,
+            parent_id=None,
+            operator="bandit_seed",
+            seed_family="random_restart",
+            proposal_arm="random_restart",
+            rationale=f"Bandit random restart for {lane}.",
+            created_round=round_index,
+        )
+        proposals.append(candidate)
+        existing_signatures.add(signature)
+    return proposals
+
+
+def parents_for_bandit_arm(state: CampaignState, lane: str, arm: str) -> list[Candidate]:
+    if arm == "frontier_local":
+        return current_frontier(state, lane)
+    if arm == "size_winner_local":
+        return size_winner_parents(state, lane)
+    if arm == "root_seed_local":
+        return root_seed_parents(state, lane)
+    return []
+
+
+def bandit_reward_for_children(
+    state: CampaignState,
+    lane: str,
+    children: list[Candidate],
+    best_b_before: float | None,
+) -> float:
+    reward = 0.0
+    for child in children:
+        score_b = child.mean_score("B")
+        if score_b is not None:
+            reward += 0.4
+            if child.status in {"confirmed", "frontier"}:
+                reward += 0.8
+        elif child.mean_score("A") is not None:
+            reward += 0.05
+    best_b_after = lane_best_score(state, lane, "B")
+    if best_b_after is not None:
+        if best_b_before is None:
+            reward += best_b_after
+        else:
+            reward += max(0.0, best_b_after - best_b_before) * 1000.0
+    return reward
+
+
+def execute_bandit_pull(
+    dataset: DatasetBundle,
+    state: CampaignState,
+    lane: str,
+    rng: random.Random,
+    round_index: int,
+    *,
+    result_cache: dict[tuple[str, str, float], TrainingResult],
+    evaluation_limit: int,
+    write_results: bool,
+    commit_hash: str,
+) -> bool:
+    arm = choose_bandit_arm(state, lane, rng)
+    best_b_before = lane_best_score(state, lane, "B")
+    children: list[Candidate] = []
+    if arm == "random_restart":
+        children = create_random_restart_candidates(state, lane, rng, round_index)
+    else:
+        if arm == "frontier_local" and lane_stalled(state, lane):
+            update_bandit_arm(state, lane, arm, 0.0)
+            return False
+        parents = parents_for_bandit_arm(state, lane, arm)[:BANDIT_PARENT_LIMIT]
+        for parent in parents:
+            children.extend(
+                propose_children_for_candidate(
+                    state,
+                    parent,
+                    rng,
+                    round_index,
+                    source_arm=arm,
+                )
+            )
+    if not children:
+        update_bandit_arm(state, lane, arm, 0.0)
+        return False
+    proposals_made = False
+    for child in children:
+        if state.evaluation_count >= evaluation_limit:
+            break
+        proposals_made = True
+        process_candidate(
+            dataset,
+            state,
+            child,
+            result_cache=result_cache,
+            evaluation_limit=evaluation_limit,
+            write_results=write_results,
+            commit_hash=commit_hash,
+        )
+    update_bandit_arm(
+        state,
+        lane,
+        arm,
+        bandit_reward_for_children(state, lane, children, best_b_before),
+    )
+    return proposals_made
+
+
 def propose_children_for_candidate(
     state: CampaignState,
     parent: Candidate,
     rng: random.Random,
     round_index: int,
+    *,
+    source_arm: str = "frontier_local",
 ) -> list[Candidate]:
     existing_signatures = {candidate.signature() for candidate in state.candidates.values()}
     included = list(parent.biomarkers)
@@ -1742,6 +2097,7 @@ def propose_children_for_candidate(
             parent_id=parent.candidate_id,
             operator=operator,
             seed_family=seed_family,
+            proposal_arm=source_arm,
             rationale=rationale,
             created_round=round_index,
         )
@@ -1854,6 +2210,7 @@ def emit_status_snapshot(state: CampaignState, path: Path = CAMPAIGN_STATUS_PATH
         "frontier": {},
         "lane_best_scores": {},
         "size_winners": {},
+        "bandit": {},
         "lane_winners": state.lane_winner_ids,
         "overall_winner_id": state.overall_winner_id,
     }
@@ -1873,6 +2230,18 @@ def emit_status_snapshot(state: CampaignState, path: Path = CAMPAIGN_STATUS_PATH
             "tier_a": lane_best_score(state, lane, "A"),
             "tier_b": lane_best_score(state, lane, "B"),
             "tier_c": lane_best_score(state, lane, "C"),
+        }
+        snapshot["bandit"][lane] = {
+            arm: {
+                "pulls": int(bandit_arm_stats(state, lane, arm)["pulls"]),
+                "total_reward": bandit_arm_stats(state, lane, arm)["total_reward"],
+                "mean_reward": (
+                    None
+                    if bandit_arm_stats(state, lane, arm)["pulls"] <= 0
+                    else bandit_arm_mean_reward(state, lane, arm)
+                ),
+            }
+            for arm in BANDIT_ARMS
         }
         snapshot["size_winners"][lane] = {}
         for feature_count in range(1, MAX_INPUT_FEATURES + 1):
@@ -2085,29 +2454,27 @@ def run_campaign(args: argparse.Namespace) -> None:
             break
         state.round_index = round_index
         proposals_made = False
-        for parent in frontier_seed_order(state):
+        for lane in LANE_ORDER:
             if state.evaluation_count >= evaluation_limit:
                 break
-            if lane_stalled(state, parent.lane):
-                continue
-            children = propose_children_for_candidate(state, parent, rng, round_index)
-            proposals_made = proposals_made or bool(children)
-            for child in children:
+            for _ in range(BANDIT_PULLS_PER_LANE_PER_ROUND):
                 if state.evaluation_count >= evaluation_limit:
                     break
-                process_candidate(
+                proposals_made = execute_bandit_pull(
                     dataset,
                     state,
-                    child,
+                    lane,
+                    rng,
+                    round_index,
                     result_cache=result_cache,
                     evaluation_limit=evaluation_limit,
                     write_results=not args.no_results_log,
                     commit_hash=commit_hash,
-                )
+                ) or proposals_made
                 if state.evaluation_count % max(1, args.status_every) == 0:
                     emit_status_snapshot(state)
                     save_state(state)
-            refresh_frontier(state, parent.lane)
+            refresh_frontier(state, lane)
         emit_status_snapshot(state)
         save_state(state)
         if not proposals_made:

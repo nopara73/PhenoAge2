@@ -1,64 +1,120 @@
 {
-  "timestamp": "2026-03-23T17:23:03.431164+00:00",
-  "evaluation_count": 960,
-  "round_index": 24,
+  "timestamp": "2026-03-23T18:26:58.267555+00:00",
+  "evaluation_count": 2165,
+  "round_index": 0,
   "frontier": {
     "with_age": [
       {
-        "candidate_id": "cand_00060",
+        "candidate_id": "cand_01962",
         "feature_count": 8,
-        "tier_b_score": 0.8643251010443532,
+        "tier_b_score": 0.870556,
         "tier_c_score": null,
         "dispersion_b": 0.0
       },
       {
-        "candidate_id": "cand_00061",
-        "feature_count": 5,
-        "tier_b_score": 0.8615954134159838,
+        "candidate_id": "cand_01846",
+        "feature_count": 10,
+        "tier_b_score": 0.870509,
         "tier_c_score": null,
         "dispersion_b": 0.0
       },
       {
-        "candidate_id": "cand_00067",
-        "feature_count": 3,
-        "tier_b_score": 0.860066659471267,
+        "candidate_id": "cand_01659",
+        "feature_count": 10,
+        "tier_b_score": 0.870062,
+        "tier_c_score": null,
+        "dispersion_b": 0.0
+      },
+      {
+        "candidate_id": "cand_01155",
+        "feature_count": 6,
+        "tier_b_score": 0.869873,
+        "tier_c_score": null,
+        "dispersion_b": 0.0
+      },
+      {
+        "candidate_id": "cand_01572",
+        "feature_count": 7,
+        "tier_b_score": 0.869801,
+        "tier_c_score": null,
+        "dispersion_b": 0.0
+      },
+      {
+        "candidate_id": "cand_01649",
+        "feature_count": 6,
+        "tier_b_score": 0.869733,
+        "tier_c_score": null,
+        "dispersion_b": 0.0
+      },
+      {
+        "candidate_id": "cand_01457",
+        "feature_count": 9,
+        "tier_b_score": 0.869551,
+        "tier_c_score": null,
+        "dispersion_b": 0.0
+      },
+      {
+        "candidate_id": "cand_01357",
+        "feature_count": 7,
+        "tier_b_score": 0.869343,
         "tier_c_score": null,
         "dispersion_b": 0.0
       }
     ],
     "without_age": [
       {
-        "candidate_id": "cand_00184",
-        "feature_count": 12,
-        "tier_b_score": 0.7734383432108988,
+        "candidate_id": "cand_01609",
+        "feature_count": 10,
+        "tier_b_score": 0.789779,
         "tier_c_score": null,
         "dispersion_b": 0.0
       },
       {
-        "candidate_id": "cand_00080",
+        "candidate_id": "cand_01802",
+        "feature_count": 10,
+        "tier_b_score": 0.787622,
+        "tier_c_score": null,
+        "dispersion_b": 0.0
+      },
+      {
+        "candidate_id": "cand_01704",
+        "feature_count": 10,
+        "tier_b_score": 0.787579,
+        "tier_c_score": null,
+        "dispersion_b": 0.0
+      },
+      {
+        "candidate_id": "cand_01904",
+        "feature_count": 8,
+        "tier_b_score": 0.787294,
+        "tier_c_score": null,
+        "dispersion_b": 0.0
+      },
+      {
+        "candidate_id": "cand_01825",
+        "feature_count": 7,
+        "tier_b_score": 0.787158,
+        "tier_c_score": null,
+        "dispersion_b": 0.0
+      },
+      {
+        "candidate_id": "cand_01705",
+        "feature_count": 10,
+        "tier_b_score": 0.786809,
+        "tier_c_score": null,
+        "dispersion_b": 0.0
+      },
+      {
+        "candidate_id": "cand_01707",
         "feature_count": 9,
-        "tier_b_score": 0.7633669315540291,
+        "tier_b_score": 0.78601,
         "tier_c_score": null,
         "dispersion_b": 0.0
       },
       {
-        "candidate_id": "cand_00139",
-        "feature_count": 7,
-        "tier_b_score": 0.7476750536030426,
-        "tier_c_score": null,
-        "dispersion_b": 0.0
-      },
-      {
-        "candidate_id": "cand_00138",
-        "feature_count": 7,
-        "tier_b_score": 0.6951698463352595,
-        "tier_c_score": null,
-        "dispersion_b": 0.0
-      },
-      {
-        "candidate_id": "cand_00146",
-        "feature_count": 2,
-        "tier_b_score": 0.6489181931384883,
+        "candidate_id": "cand_01818",
+        "feature_count": 9,
+        "tier_b_score": 0.785596,
         "tier_c_score": null,
         "dispersion_b": 0.0
       }
@@ -66,19 +122,343 @@
   },
   "lane_best_scores": {
     "with_age": {
-      "tier_a": 0.8665610446431592,
-      "tier_b": 0.8643251010443532,
+      "tier_a": 0.870218,
+      "tier_b": 0.870556,
       "tier_c": null
     },
     "without_age": {
-      "tier_a": 0.7865688736675758,
-      "tier_b": 0.7907669061016452,
+      "tier_a": 0.786173,
+      "tier_b": 0.789779,
       "tier_c": null
     }
   },
-  "lane_winners": {
-    "with_age": null,
-    "without_age": null
+  "size_winners": {
+    "with_age": {
+      "1": null,
+      "2": {
+        "candidate_id": "cand_00056",
+        "feature_count": 2,
+        "selected_biomarkers": [
+          "VCP"
+        ],
+        "tier_a_score": 0.864243,
+        "tier_b_score": null,
+        "tier_c_score": null
+      },
+      "3": {
+        "candidate_id": "cand_01088",
+        "feature_count": 3,
+        "selected_biomarkers": [
+          "GRP",
+          "HDP"
+        ],
+        "tier_a_score": 0.8650340000000001,
+        "tier_b_score": 0.865199,
+        "tier_c_score": null
+      },
+      "4": {
+        "candidate_id": "cand_01292",
+        "feature_count": 4,
+        "selected_biomarkers": [
+          "GRP",
+          "HDP",
+          "UAP"
+        ],
+        "tier_a_score": 0.866727,
+        "tier_b_score": 0.867252,
+        "tier_c_score": null
+      },
+      "5": {
+        "candidate_id": "cand_01254",
+        "feature_count": 5,
+        "selected_biomarkers": [
+          "GRP",
+          "HDP",
+          "PSP",
+          "VEP"
+        ],
+        "tier_a_score": 0.8656159999999999,
+        "tier_b_score": 0.86853,
+        "tier_c_score": null
+      },
+      "6": {
+        "candidate_id": "cand_01155",
+        "feature_count": 6,
+        "selected_biomarkers": [
+          "GRP",
+          "HDP",
+          "PSP",
+          "UAP",
+          "VEP"
+        ],
+        "tier_a_score": 0.867618,
+        "tier_b_score": 0.869873,
+        "tier_c_score": null
+      },
+      "7": {
+        "candidate_id": "cand_01860",
+        "feature_count": 7,
+        "selected_biomarkers": [
+          "GRP",
+          "HDP",
+          "HGP",
+          "MHP",
+          "PSP",
+          "VCP"
+        ],
+        "tier_a_score": 0.867078,
+        "tier_b_score": null,
+        "tier_c_score": null
+      },
+      "8": {
+        "candidate_id": "cand_01962",
+        "feature_count": 8,
+        "selected_biomarkers": [
+          "ACP",
+          "GRP",
+          "HDP",
+          "MHP",
+          "PSP",
+          "RCP",
+          "UAP"
+        ],
+        "tier_a_score": 0.8677815,
+        "tier_b_score": 0.870556,
+        "tier_c_score": null
+      },
+      "9": {
+        "candidate_id": "cand_01457",
+        "feature_count": 9,
+        "selected_biomarkers": [
+          "ATPSI",
+          "GRP",
+          "HDP",
+          "PSP",
+          "TCP",
+          "TGP",
+          "UAP",
+          "VEP"
+        ],
+        "tier_a_score": 0.865047,
+        "tier_b_score": 0.869551,
+        "tier_c_score": null
+      },
+      "10": {
+        "candidate_id": "cand_01969",
+        "feature_count": 10,
+        "selected_biomarkers": [
+          "ATPSI",
+          "GRP",
+          "HDP",
+          "PSP",
+          "TCP",
+          "TGP",
+          "UAP",
+          "VAP",
+          "VEP"
+        ],
+        "tier_a_score": 0.867903,
+        "tier_b_score": null,
+        "tier_c_score": null
+      }
+    },
+    "without_age": {
+      "1": {
+        "candidate_id": "cand_00099",
+        "feature_count": 1,
+        "selected_biomarkers": [
+          "GHP"
+        ],
+        "tier_a_score": 0.682399,
+        "tier_b_score": null,
+        "tier_c_score": null
+      },
+      "2": {
+        "candidate_id": "cand_01438",
+        "feature_count": 2,
+        "selected_biomarkers": [
+          "GHP",
+          "MVPSI"
+        ],
+        "tier_a_score": 0.712495,
+        "tier_b_score": 0.712495,
+        "tier_c_score": null
+      },
+      "3": {
+        "candidate_id": "cand_01516",
+        "feature_count": 3,
+        "selected_biomarkers": [
+          "GHP",
+          "LYP",
+          "MVPSI"
+        ],
+        "tier_a_score": 0.732239,
+        "tier_b_score": 0.740266,
+        "tier_c_score": null
+      },
+      "4": {
+        "candidate_id": "cand_01520",
+        "feature_count": 4,
+        "selected_biomarkers": [
+          "CAPSI",
+          "GHP",
+          "LYP",
+          "UAP"
+        ],
+        "tier_a_score": 0.72588,
+        "tier_b_score": null,
+        "tier_c_score": null
+      },
+      "5": {
+        "candidate_id": "cand_01827",
+        "feature_count": 5,
+        "selected_biomarkers": [
+          "GHP",
+          "LYP",
+          "MVPSI",
+          "PBP",
+          "TCP"
+        ],
+        "tier_a_score": 0.7637754999999999,
+        "tier_b_score": 0.76967,
+        "tier_c_score": null
+      },
+      "6": {
+        "candidate_id": "cand_01712",
+        "feature_count": 6,
+        "selected_biomarkers": [
+          "FOP",
+          "GHP",
+          "LYP",
+          "MVPSI",
+          "PBP",
+          "TCP"
+        ],
+        "tier_a_score": 0.771504,
+        "tier_b_score": 0.779167,
+        "tier_c_score": null
+      },
+      "7": {
+        "candidate_id": "cand_01825",
+        "feature_count": 7,
+        "selected_biomarkers": [
+          "FOP",
+          "GHP",
+          "LYP",
+          "MVPSI",
+          "PBP",
+          "RWP",
+          "TCP"
+        ],
+        "tier_a_score": 0.7729785,
+        "tier_b_score": 0.787158,
+        "tier_c_score": null
+      },
+      "8": {
+        "candidate_id": "cand_01904",
+        "feature_count": 8,
+        "selected_biomarkers": [
+          "FOP",
+          "GHP",
+          "LUP",
+          "LYP",
+          "MVPSI",
+          "PBP",
+          "RWP",
+          "TCP"
+        ],
+        "tier_a_score": 0.771718,
+        "tier_b_score": 0.787294,
+        "tier_c_score": null
+      },
+      "9": {
+        "candidate_id": "cand_01707",
+        "feature_count": 9,
+        "selected_biomarkers": [
+          "AMP",
+          "CEP",
+          "GHP",
+          "LMPPCNT",
+          "MOP",
+          "MVPSI",
+          "PBP",
+          "RWP",
+          "SGP"
+        ],
+        "tier_a_score": 0.780438,
+        "tier_b_score": 0.78601,
+        "tier_c_score": null
+      },
+      "10": {
+        "candidate_id": "cand_01802",
+        "feature_count": 10,
+        "selected_biomarkers": [
+          "AMP",
+          "CEP",
+          "CRP",
+          "GHP",
+          "LMP",
+          "LMPPCNT",
+          "LYP",
+          "MVPSI",
+          "PBP",
+          "SGP"
+        ],
+        "tier_a_score": 0.786173,
+        "tier_b_score": 0.787622,
+        "tier_c_score": null
+      }
+    }
   },
-  "overall_winner_id": null
+  "bandit": {
+    "with_age": {
+      "frontier_local": {
+        "pulls": 0,
+        "total_reward": 0.0,
+        "mean_reward": null
+      },
+      "size_winner_local": {
+        "pulls": 0,
+        "total_reward": 0.0,
+        "mean_reward": null
+      },
+      "root_seed_local": {
+        "pulls": 0,
+        "total_reward": 0.0,
+        "mean_reward": null
+      },
+      "random_restart": {
+        "pulls": 0,
+        "total_reward": 0.0,
+        "mean_reward": null
+      }
+    },
+    "without_age": {
+      "frontier_local": {
+        "pulls": 0,
+        "total_reward": 0.0,
+        "mean_reward": null
+      },
+      "size_winner_local": {
+        "pulls": 0,
+        "total_reward": 0.0,
+        "mean_reward": null
+      },
+      "root_seed_local": {
+        "pulls": 0,
+        "total_reward": 0.0,
+        "mean_reward": null
+      },
+      "random_restart": {
+        "pulls": 0,
+        "total_reward": 0.0,
+        "mean_reward": null
+      }
+    }
+  },
+  "lane_winners": {
+    "with_age": "cand_01962",
+    "without_age": "cand_01609"
+  },
+  "overall_winner_id": "cand_01962"
 }
