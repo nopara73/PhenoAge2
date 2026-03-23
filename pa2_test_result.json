@@ -1,7 +1,7 @@
 {
   "phenoage_c_index": 0.8680255348023732,
-  "pa2_c_index": 0.8672505768366441,
-  "delta": -0.0007749579657291283,
+  "pa2_c_index": 0.8697745110190509,
+  "delta": 0.001748976216677689,
   "verdict": "inferior",
   "benchmark_dataset": "nhanes3-phenoage",
   "evaluation_split": "test",
