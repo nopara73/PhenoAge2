@@ -1,0 +1,84 @@
+{
+  "timestamp": "2026-03-23T17:23:03.431164+00:00",
+  "evaluation_count": 960,
+  "round_index": 24,
+  "frontier": {
+    "with_age": [
+      {
+        "candidate_id": "cand_00060",
+        "feature_count": 8,
+        "tier_b_score": 0.8643251010443532,
+        "tier_c_score": null,
+        "dispersion_b": 0.0
+      },
+      {
+        "candidate_id": "cand_00061",
+        "feature_count": 5,
+        "tier_b_score": 0.8615954134159838,
+        "tier_c_score": null,
+        "dispersion_b": 0.0
+      },
+      {
+        "candidate_id": "cand_00067",
+        "feature_count": 3,
+        "tier_b_score": 0.860066659471267,
+        "tier_c_score": null,
+        "dispersion_b": 0.0
+      }
+    ],
+    "without_age": [
+      {
+        "candidate_id": "cand_00184",
+        "feature_count": 12,
+        "tier_b_score": 0.7734383432108988,
+        "tier_c_score": null,
+        "dispersion_b": 0.0
+      },
+      {
+        "candidate_id": "cand_00080",
+        "feature_count": 9,
+        "tier_b_score": 0.7633669315540291,
+        "tier_c_score": null,
+        "dispersion_b": 0.0
+      },
+      {
+        "candidate_id": "cand_00139",
+        "feature_count": 7,
+        "tier_b_score": 0.7476750536030426,
+        "tier_c_score": null,
+        "dispersion_b": 0.0
+      },
+      {
+        "candidate_id": "cand_00138",
+        "feature_count": 7,
+        "tier_b_score": 0.6951698463352595,
+        "tier_c_score": null,
+        "dispersion_b": 0.0
+      },
+      {
+        "candidate_id": "cand_00146",
+        "feature_count": 2,
+        "tier_b_score": 0.6489181931384883,
+        "tier_c_score": null,
+        "dispersion_b": 0.0
+      }
+    ]
+  },
+  "lane_best_scores": {
+    "with_age": {
+      "tier_a": 0.8665610446431592,
+      "tier_b": 0.8643251010443532,
+      "tier_c": null
+    },
+    "without_age": {
+      "tier_a": 0.7865688736675758,
+      "tier_b": 0.7907669061016452,
+      "tier_c": null
+    }
+  },
+  "lane_winners": {
+    "with_age": null,
+    "without_age": null
+  },
+  "overall_winner_id": null
+}

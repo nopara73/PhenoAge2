@@ -83,8 +83,8 @@ CAMPAIGN_SUMMARY_PATH = AUTORESEARCH_DIR / "bioage_campaign_summary.json"
 FINALIST_ARTIFACT_DIR = AUTORESEARCH_DIR / "campaign_artifacts"
 STATE_VERSION = 1
 
-MAX_TOTAL_EVALUATIONS = 240
-MAX_EXPANSION_ROUNDS = 16
+MAX_TOTAL_EVALUATIONS = 1_000_000
+MAX_EXPANSION_ROUNDS = 1_000_000
 FRONTIER_BEAM_WIDTH = 8
 FINALISTS_PER_LANE = 3
 STATUS_EVERY = 12
@@ -92,6 +92,7 @@ OVERLAP_REDUNDANCY_THRESHOLD = 0.85
 NEAR_TIE_DELTA = 0.0005
 TIER_A_BORDERLINE_DELTA = 0.001
 TIER_A_STRONG_DELTA = 0.003
+TIER_A_NEAR_BEST_DELTA = 0.002
 TIER_B_PROMOTION_DELTA = 0.001
 LANE_PATIENCE_EVALUATIONS = 36
 GROUP_MOVE_MAX_CHANGE = 3
@@ -287,6 +288,7 @@ class TrainingResult:
     biomarker_columns: tuple[str, ...]
     age_included: bool
     artifact_path: str | None = None
+    cache_hit: bool = False
 
 
 @dataclass
@@ -566,6 +568,83 @@ def selected_feature_columns(include_age: bool, biomarkers: tuple[str, ...] | li
     if include_age:
         return (AGE_COLUMN, *selected)
     return selected
+
+
+def parse_description_fields(description: str) -> dict[str, str]:
+    fields: dict[str, str] = {}
+    for token in description.split():
+        if "=" not in token:
+            continue
+        key, value = token.split("=", 1)
+        fields[key] = value
+    return fields
+
+
+def result_cache_key(
+    lane: str,
+    biomarkers: tuple[str, ...] | list[str],
+    tier: str,
+    requested_budget_s: float,
+) -> tuple[str, tuple[str, ...], str, str]:
+    return (
+        lane,
+        tuple(sorted(biomarkers)),
+        tier,
+        f"{float(requested_budget_s):.3f}",
+    )
+
+
+def load_result_cache() -> dict[tuple[str, tuple[str, ...], str, str], TrainingResult]:
+    if not RESULTS_PATH.exists():
+        return {}
+
+    cache: dict[tuple[str, tuple[str, ...], str, str], TrainingResult] = {}
+    with RESULTS_PATH.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle, delimiter="\t")
+        for row in reader:
+            if not row or row.get("status") == STATUS_CRASH:
+                continue
+            description_fields = parse_description_fields(row.get("description", ""))
+            lane = description_fields.get("lane")
+            tier = description_fields.get("tier")
+            requested_budget_raw = description_fields.get("requested_budget_s")
+            actual_training_raw = description_fields.get("actual_training_s")
+            if lane not in LANE_ORDER or tier not in TIER_ORDER:
+                continue
+            if requested_budget_raw is None or actual_training_raw is None:
+                continue
+
+            selected_raw = row.get("selected_biomarkers", "")
+            biomarkers = tuple(sorted(value for value in selected_raw.split(";") if value))
+            if not biomarkers:
+                continue
+
+            try:
+                requested_budget_s = float(requested_budget_raw)
+                actual_training_s = float(actual_training_raw)
+                val_cindex = float(row["val_cindex"])
+                peak_vram_mb = float(row["memory_gb"]) * 1024.0
+            except (KeyError, TypeError, ValueError):
+                continue
+
+            feature_columns = selected_feature_columns(LANE_CONFIGS[lane].include_age, biomarkers)
+            cache[result_cache_key(lane, biomarkers, tier, requested_budget_s)] = TrainingResult(
+                val_cindex=val_cindex,
+                training_seconds=actual_training_s,
+                total_seconds=actual_training_s,
+                peak_vram_mb=peak_vram_mb,
+                num_steps=0,
+                num_params=0,
+                best_step=-1,
+                requested_budget_s=requested_budget_s,
+                effective_budget_s=requested_budget_s,
+                feature_columns=feature_columns,
+                biomarker_columns=biomarkers,
+                age_included=LANE_CONFIGS[lane].include_age,
+                artifact_path=None,
+                cache_hit=True,
+            )
+    return cache
 
 
 def cox_partial_loss(risk_scores: torch.Tensor, times: torch.Tensor, events: torch.Tensor) -> torch.Tensor:
@@ -926,6 +1005,7 @@ def record_evaluation(
         "num_params": 0 if result is None else result.num_params,
         "best_step": -1 if result is None else result.best_step,
         "artifact_path": None if result is None else result.artifact_path,
+        "cache_hit": False if result is None else result.cache_hit,
         "error": error,
     }
     candidate.tiers[tier].append(entry)
@@ -950,7 +1030,10 @@ def record_evaluation(
         val_cindex=0.0 if result is None else result.val_cindex,
         peak_vram_mb=0.0 if result is None else result.peak_vram_mb,
         write_results=write_results,
-        extra_fields={"error": error or "none"},
+        extra_fields={
+            "error": error or "none",
+            "cache_hit": "false" if result is None else str(result.cache_hit).lower(),
+        },
     )
 
 
@@ -979,9 +1062,27 @@ def lane_best_score(
     return max(values)
 
 
-def preferred_candidate(a: Candidate, b: Candidate, tier: str) -> Candidate:
-    score_a = a.mean_score(tier) or float("-inf")
-    score_b = b.mean_score(tier) or float("-inf")
+def candidate_score(
+    candidate: Candidate,
+    tier: str,
+    provisional_scores: dict[str, float] | None = None,
+) -> float:
+    if provisional_scores is not None and candidate.candidate_id in provisional_scores:
+        return float(provisional_scores[candidate.candidate_id])
+    score = candidate.mean_score(tier)
+    if score is None:
+        return float("-inf")
+    return float(score)
+
+
+def preferred_candidate(
+    a: Candidate,
+    b: Candidate,
+    tier: str,
+    provisional_scores: dict[str, float] | None = None,
+) -> Candidate:
+    score_a = candidate_score(a, tier, provisional_scores)
+    score_b = candidate_score(b, tier, provisional_scores)
     if score_a > score_b + NEAR_TIE_DELTA:
         return a
     if score_b > score_a + NEAR_TIE_DELTA:
@@ -1009,7 +1110,7 @@ def refresh_frontier(state: CampaignState, lane: str) -> None:
         for candidate in state.candidates.values()
         if candidate.lane == lane
         and candidate.mean_score("B") is not None
-        and candidate.status not in {"discarded", "crashed"}
+        and candidate.status != "crashed"
     ]
     ranked = sorted(
         confirmed,
@@ -1041,7 +1142,7 @@ def refresh_frontier(state: CampaignState, lane: str) -> None:
     state.frontier_ids[lane] = [candidate.candidate_id for candidate in frontier]
     frontier_ids = set(state.frontier_ids[lane])
     for candidate in state.candidates.values():
-        if candidate.lane != lane or candidate.status in {"discarded", "crashed"}:
+        if candidate.lane != lane or candidate.status == "crashed":
             continue
         if candidate.candidate_id in frontier_ids:
             candidate.status = "frontier"
@@ -1206,11 +1307,16 @@ def evaluate_candidate_tier(
     candidate: Candidate,
     tier: str,
     *,
+    result_cache: dict[tuple[str, tuple[str, ...], str, str], TrainingResult],
     write_results: bool,
     commit_hash: str,
     persist_artifact: bool = False,
 ) -> TrainingResult | None:
     requested_budget_s = tier_budget(candidate, tier)
+    if not persist_artifact:
+        cached_result = result_cache.get(result_cache_key(candidate.lane, candidate.biomarkers, tier, requested_budget_s))
+        if cached_result is not None:
+            return cached_result
     artifact_path: Path | None = None
     if persist_artifact:
         artifact_path = FINALIST_ARTIFACT_DIR / f"{candidate.candidate_id}.pt"
@@ -1262,6 +1368,40 @@ def tier_a_reference_score(state: CampaignState, candidate: Candidate) -> float 
     return max(scores)
 
 
+def tier_a_parent_score(state: CampaignState, candidate: Candidate) -> float | None:
+    if candidate.parent_id is None or candidate.parent_id not in state.candidates:
+        return None
+    return state.candidates[candidate.parent_id].mean_score("A")
+
+
+def tier_a_lane_best_score(state: CampaignState, candidate: Candidate) -> float | None:
+    return lane_best_score(
+        state,
+        candidate.lane,
+        "A",
+        exclude_candidate_id=candidate.candidate_id,
+    )
+
+
+def tier_b_lane_best_score(state: CampaignState, candidate: Candidate) -> float | None:
+    return lane_best_score(
+        state,
+        candidate.lane,
+        "B",
+        exclude_candidate_id=candidate.candidate_id,
+    )
+
+
+def tier_a_close_to_lane_frontier(
+    score: float,
+    lane_best_a: float | None,
+    lane_best_b: float | None,
+) -> bool:
+    return (lane_best_a is not None and score >= lane_best_a - TIER_A_NEAR_BEST_DELTA) or (
+        lane_best_b is not None and score >= lane_best_b - TIER_A_NEAR_BEST_DELTA
+    )
+
+
 def tier_b_reference_score(state: CampaignState, candidate: Candidate) -> float | None:
     scores: list[float] = []
     if candidate.parent_id is not None and candidate.parent_id in state.candidates:
@@ -1281,6 +1421,7 @@ def process_candidate(
     state: CampaignState,
     candidate: Candidate,
     *,
+    result_cache: dict[tuple[str, tuple[str, ...], str, str], TrainingResult],
     evaluation_limit: int,
     write_results: bool,
     commit_hash: str,
@@ -1294,20 +1435,32 @@ def process_candidate(
             state,
             candidate,
             "A",
+            result_cache=result_cache,
             write_results=write_results,
             commit_hash=commit_hash,
         )
         if result_a is None:
             return
+        parent_score = tier_a_parent_score(state, candidate)
+        lane_best_a = tier_a_lane_best_score(state, candidate)
+        lane_best_b = tier_b_lane_best_score(state, candidate)
         reference_score = tier_a_reference_score(state, candidate)
         delta = result_a.val_cindex if reference_score is None else result_a.val_cindex - reference_score
-        if reference_score is not None and result_a.val_cindex <= reference_score:
+        close_to_lane_frontier = tier_a_close_to_lane_frontier(
+            result_a.val_cindex,
+            lane_best_a,
+            lane_best_b,
+        )
+        parent_gain = None if parent_score is None else result_a.val_cindex - parent_score
+        if reference_score is not None and result_a.val_cindex <= reference_score and not close_to_lane_frontier:
             promotion = "discard"
             candidate.status = "discarded"
-        elif delta >= TIER_A_STRONG_DELTA:
+        elif delta >= TIER_A_STRONG_DELTA or (
+            parent_gain is not None and parent_gain >= TIER_A_STRONG_DELTA
+        ):
             promotion = "promote_to_B"
             candidate.status = "promote_to_B"
-        elif delta >= TIER_A_BORDERLINE_DELTA:
+        elif close_to_lane_frontier or delta >= TIER_A_BORDERLINE_DELTA:
             promotion = "retest_A"
             candidate.status = "retest_A"
         else:
@@ -1330,18 +1483,28 @@ def process_candidate(
             state,
             candidate,
             "A",
+            result_cache=result_cache,
             write_results=write_results,
             commit_hash=commit_hash,
         )
         if result_a_repeat is None:
             return
         mean_score = candidate.mean_score("A")
+        lane_best_a = tier_a_lane_best_score(state, candidate)
+        lane_best_b = tier_b_lane_best_score(state, candidate)
         reference_score = tier_a_reference_score(state, candidate)
         delta = 0.0 if reference_score is None or mean_score is None else mean_score - reference_score
+        close_to_lane_frontier = False
+        if mean_score is not None:
+            close_to_lane_frontier = tier_a_close_to_lane_frontier(
+                mean_score,
+                lane_best_a,
+                lane_best_b,
+            )
         if mean_score is not None and reference_score is None:
             promotion = "promote_to_B"
             candidate.status = "promote_to_B"
-        elif delta >= TIER_A_BORDERLINE_DELTA:
+        elif delta >= TIER_A_BORDERLINE_DELTA or close_to_lane_frontier:
             promotion = "promote_to_B"
             candidate.status = "promote_to_B"
         else:
@@ -1367,6 +1530,7 @@ def process_candidate(
             state,
             candidate,
             "B",
+            result_cache=result_cache,
             write_results=write_results,
             commit_hash=commit_hash,
         )
@@ -1383,9 +1547,18 @@ def process_candidate(
         else:
             keep_frontier = False
         redundant = False
+        provisional_scores = {candidate.candidate_id: mean_score}
         for frontier_candidate in current_frontier(state, candidate.lane):
             if jaccard_overlap(candidate, frontier_candidate) >= OVERLAP_REDUNDANCY_THRESHOLD:
-                if preferred_candidate(frontier_candidate, candidate, "B") is frontier_candidate:
+                if (
+                    preferred_candidate(
+                        frontier_candidate,
+                        candidate,
+                        "B",
+                        provisional_scores=provisional_scores,
+                    )
+                    is frontier_candidate
+                ):
                     redundant = True
                     break
         promotion = "keep_frontier" if keep_frontier and not redundant else "discard"
@@ -1585,6 +1758,7 @@ def evaluate_lane_finalists(
     lane: str,
     finalists_per_lane: int,
     *,
+    result_cache: dict[tuple[str, tuple[str, ...], str, str], TrainingResult],
     evaluation_limit: int,
     write_results: bool,
     commit_hash: str,
@@ -1620,6 +1794,7 @@ def evaluate_lane_finalists(
                 state,
                 candidate,
                 "C",
+                result_cache=result_cache,
                 write_results=write_results,
                 commit_hash=commit_hash,
                 persist_artifact=True,
@@ -1728,6 +1903,7 @@ def run_campaign(args: argparse.Namespace) -> None:
     validate_biological_groups()
     dataset = build_dataset_bundle()
     state = load_or_create_state(args.fresh)
+    result_cache = load_result_cache()
     rng = random.Random(DEV_VAL_SEED)
     commit_hash = short_git_hash()
 
@@ -1750,6 +1926,7 @@ def run_campaign(args: argparse.Namespace) -> None:
             dataset,
             state,
             candidate,
+            result_cache=result_cache,
             evaluation_limit=evaluation_limit,
             write_results=not args.no_results_log,
             commit_hash=commit_hash,
@@ -1782,6 +1959,7 @@ def run_campaign(args: argparse.Namespace) -> None:
                     dataset,
                     state,
                     child,
+                    result_cache=result_cache,
                     evaluation_limit=evaluation_limit,
                     write_results=not args.no_results_log,
                     commit_hash=commit_hash,
@@ -1804,6 +1982,7 @@ def run_campaign(args: argparse.Namespace) -> None:
                 state,
                 lane,
                 args.finalists_per_lane,
+                result_cache=result_cache,
                 evaluation_limit=evaluation_limit,
                 write_results=not args.no_results_log,
                 commit_hash=commit_hash,

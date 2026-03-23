@@ -1,0 +1,27 @@
+{
+  "timestamp": "2026-03-23T16:57:11.228446+00:00",
+  "evaluation_count": 240,
+  "lane_winner_ids": {
+    "with_age": null,
+    "without_age": null
+  },
+  "overall_winner_id": null,
+  "frontier_ids": {
+    "with_age": [
+      "cand_00060",
+      "cand_00061",
+      "cand_00067"
+    ],
+    "without_age": [
+      "cand_00184",
+      "cand_00080",
+      "cand_00139",
+      "cand_00138",
+      "cand_00146"
+    ]
+  },
+  "finalists": {
+    "with_age": [],
+    "without_age": []
+  }
+}
