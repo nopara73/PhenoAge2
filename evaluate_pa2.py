@@ -58,7 +58,8 @@ def main() -> None:
             "participants": len(test_rows),
             "aging_related_deaths": int(events.sum()),
             "candidate_model_path": str(args.model),
-            "age_excluded_from_pa2_inputs": True,
+            "input_feature_count": 10,
+            "age_included_in_pa2_inputs": True,
         }
     )
 

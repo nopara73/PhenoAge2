@@ -38,7 +38,8 @@ SPLIT_PATH = DATA_DIR / "frozen_split.csv"
 DEFAULT_CANDIDATE_MODEL_PATH = Path(__file__).resolve().parent / "candidate_pa2.pt"
 DEFAULT_RESULT_PATH = REPO_ROOT / "pa2_test_result.json"
 
-FEATURE_COLUMNS = (
+AGE_COLUMN = "HSAGEIR"
+BIOMARKER_COLUMNS = (
     "AMP",
     "CEP",
     "SGP",
@@ -49,7 +50,7 @@ FEATURE_COLUMNS = (
     "APPSI",
     "WCP",
 )
-AGE_COLUMN = "HSAGEIR"
+FEATURE_COLUMNS = (AGE_COLUMN, *BIOMARKER_COLUMNS)
 TIME_COLUMN = "time_months"
 EVENT_COLUMN = "aging_related_event"
 ALLOWED_SPLITS = {"development", "test"}

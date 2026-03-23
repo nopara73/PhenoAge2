@@ -17,6 +17,7 @@ from prepare import (
     ALBUMIN_COEF,
     ALBUMIN_G_PER_DL_TO_G_PER_L,
     ALKALINE_PHOSPHATASE_COEF,
+    AGE_COEF,
     CREATININE_COEF,
     CREATININE_MG_PER_DL_TO_UMOL_PER_L,
     CRP_MG_PER_DL_TO_MG_PER_L,
@@ -53,11 +54,12 @@ SEED = 42
 class FeatureEncoder(nn.Module):
     def __init__(self):
         super().__init__()
-        self.output_dim = 16
+        self.output_dim = 17
         self.albumin_scale = float(ALBUMIN_G_PER_DL_TO_G_PER_L)
         self.creatinine_scale = float(CREATININE_MG_PER_DL_TO_UMOL_PER_L)
         self.glucose_scale = float(GLUCOSE_MG_PER_DL_TO_MMOL_PER_L)
         self.crp_scale = float(CRP_MG_PER_DL_TO_MG_PER_L)
+        self.age_coef = float(AGE_COEF)
         self.albumin_coef = float(ALBUMIN_COEF)
         self.creatinine_coef = float(CREATININE_COEF)
         self.glucose_coef = float(GLUCOSE_COEF)
@@ -69,16 +71,17 @@ class FeatureEncoder(nn.Module):
         self.wbc_coef = float(WBC_COEF)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        amp = x[:, 0] * self.albumin_scale
-        cep = x[:, 1] * self.creatinine_scale
-        sgp = x[:, 2] * self.glucose_scale
-        crp_mg_per_l = x[:, 3] * self.crp_scale
+        age = x[:, 0]
+        amp = x[:, 1] * self.albumin_scale
+        cep = x[:, 2] * self.creatinine_scale
+        sgp = x[:, 3] * self.glucose_scale
+        crp_mg_per_l = x[:, 4] * self.crp_scale
         log_crp = torch.log(crp_mg_per_l.clamp_min(1e-6))
-        lymph = x[:, 4]
-        mcv = x[:, 5]
-        rdw = x[:, 6]
-        alk = x[:, 7]
-        wbc = x[:, 8]
+        lymph = x[:, 5]
+        mcv = x[:, 6]
+        rdw = x[:, 7]
+        alk = x[:, 8]
+        wbc = x[:, 9]
 
         pheno_no_age_xb = (
             self.albumin_coef * amp
@@ -91,9 +94,11 @@ class FeatureEncoder(nn.Module):
             + self.alk_coef * alk
             + self.wbc_coef * wbc
         )
+        pheno_with_age_xb = pheno_no_age_xb + self.age_coef * age
 
         return torch.stack(
             (
+                age,
                 amp,
                 cep,
                 sgp,
@@ -104,12 +109,12 @@ class FeatureEncoder(nn.Module):
                 alk,
                 wbc,
                 pheno_no_age_xb,
+                pheno_with_age_xb,
+                age * rdw,
+                age * log_crp,
                 amp * rdw,
                 sgp * log_crp,
                 wbc * log_crp,
-                lymph * rdw,
-                alk * rdw,
-                cep * log_crp,
             ),
             dim=1,
         )
@@ -142,7 +147,7 @@ class RiskMLP(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         encoded = self.encoder(x)
-        base_score = encoded[:, 9]
+        base_score = encoded[:, 11]
         standardized = (encoded - self.feature_mean) / self.feature_std
         residual = self.residual_head(standardized).squeeze(-1)
         return self.base_weight * base_score + self.residual_scale * residual
