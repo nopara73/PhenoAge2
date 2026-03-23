@@ -1742,7 +1742,7 @@ def run_campaign(args: argparse.Namespace) -> None:
     save_state(state)
     evaluation_limit = state.evaluation_count + args.max_evaluations
 
-    pending_seeds = build_pending_seed_queue(state, alternate_lanes=args.smoke_test)
+    pending_seeds = build_pending_seed_queue(state, alternate_lanes=True)
 
     while pending_seeds and state.evaluation_count < evaluation_limit:
         candidate = pending_seeds.pop(0)
