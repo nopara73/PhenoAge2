@@ -35,6 +35,8 @@ risk(x) = f((x - mu) / sigma)
 
 where `x` is the selected raw input vector, `mu` and `sigma` are fit on the training split only, and `f` is a small MLP.
 
+The fixed harness budget is `10s` of training time per run unless the benchmark contract is deliberately changed.
+
 ## What You CAN Do
 
 - Modify `train.py`

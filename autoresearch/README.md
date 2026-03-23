@@ -16,6 +16,8 @@ Candidate models are trained on `development` participants only and scored with 
 
 The fixed scorer family is intentionally naive: take the selected raw feature vector, standardize each dimension with train-fit mean/std, then feed the standardized vector into one small MLP that emits a single risk score.
 
+The default training budget in the fixed harness is `10s` per run.
+
 ## Fixed benchmark contract
 
 - Inputs are limited to `HSAGEIR` plus the 57 candidate biomarkers already present in `nhanes3-bioage/cohort.csv`.
