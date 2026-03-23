@@ -174,6 +174,67 @@ BIOLOGICAL_GROUPS = {
     ),
 }
 
+INPUT_DISPLAY_NAMES = {
+    "HSAGEIR": "age",
+    "ACP": "alpha carotene",
+    "AMP": "albumin",
+    "APPSI": "alkaline phosphatase",
+    "ASPSI": "aspartate aminotransferase",
+    "ATPSI": "alanine aminotransferase",
+    "BCP": "beta carotene",
+    "BUP": "blood urea nitrogen",
+    "BXP": "beta cryptoxanthin",
+    "C1P": "c-peptide",
+    "C3PSI": "bicarbonate",
+    "CAPSI": "total calcium (SI)",
+    "CEP": "creatinine",
+    "CLPSI": "chloride",
+    "CRP": "c-reactive protein",
+    "DWP": "platelet distribution width",
+    "FEP": "iron",
+    "FOP": "folate",
+    "FRP": "ferritin",
+    "GHP": "glycated hemoglobin",
+    "GRP": "granulocyte number",
+    "GRPPCNT": "granulocyte percent",
+    "HDP": "HDL cholesterol",
+    "HGP": "hemoglobin",
+    "HTP": "hematocrit",
+    "I1P": "insulin",
+    "LDPSI": "lactate dehydrogenase",
+    "LMP": "lymphocyte number",
+    "LMPPCNT": "lymphocyte percent",
+    "LUP": "lutein/zeaxanthin",
+    "LYP": "lycopene",
+    "MCPSI": "mean cell hemoglobin",
+    "MHP": "mean cell hemoglobin concentration",
+    "MOP": "mononuclear number",
+    "MOPPCNT": "mononuclear percent",
+    "MVPSI": "mean cell volume",
+    "NAPSI": "sodium",
+    "PBP": "lead",
+    "PLP": "platelet count",
+    "PSP": "phosphorus",
+    "PVPSI": "mean platelet volume",
+    "PXP": "transferrin saturation",
+    "RCP": "red blood cell count",
+    "RWP": "red cell distribution width",
+    "SCP": "total calcium",
+    "SEP": "selenium",
+    "SGP": "glucose",
+    "SKPSI": "potassium",
+    "TBP": "total bilirubin",
+    "TCP": "cholesterol",
+    "TGP": "triglycerides",
+    "TIP": "TIBC",
+    "TPP": "total protein",
+    "UAP": "uric acid",
+    "VAP": "vitamin A",
+    "VCP": "vitamin C",
+    "VEP": "vitamin E",
+    "WCP": "white blood cell count",
+}
+
 
 @dataclass(frozen=True)
 class LaneConfig:
@@ -808,6 +869,39 @@ def append_result_row(
         )
 
 
+def format_score(value: float | None) -> str:
+    if value is None:
+        return "n/a"
+    return f"{value:.6f}"
+
+
+def format_inputs(candidate: Candidate) -> str:
+    return ", ".join(INPUT_DISPLAY_NAMES.get(column, column) for column in candidate.feature_columns())
+
+
+def print_evaluation_report(
+    state: CampaignState,
+    candidate: Candidate,
+    tier: str,
+    status: str,
+    promotion: str,
+    result: TrainingResult | None,
+    *,
+    error: str | None = None,
+) -> None:
+    print(
+        f"c-index: {format_score(None if result is None else result.val_cindex)}, "
+        f"subsets: {candidate.feature_count()}, "
+        f"biomarkers: {format_inputs(candidate)}"
+    )
+    if error is not None:
+        print(
+            f"c-index: crash, "
+            f"subsets: {candidate.feature_count()}, "
+            f"biomarkers: {format_inputs(candidate)}"
+        )
+
+
 def record_evaluation(
     state: CampaignState,
     candidate: Candidate,
@@ -836,6 +930,15 @@ def record_evaluation(
     }
     candidate.tiers[tier].append(entry)
     state.evaluation_count += 1
+    print_evaluation_report(
+        state,
+        candidate,
+        tier,
+        status,
+        promotion,
+        result,
+        error=error,
+    )
     append_result_row(
         commit_hash=commit_hash,
         candidate=candidate,
@@ -1551,6 +1654,11 @@ def evaluate_locked_winner_on_test(
     )
     write_json(DEFAULT_RESULT_PATH, result)
     state.test_evaluated = True
+    print(
+        f"c-index: {test_c_index:.6f}, "
+        f"subsets: {winner.feature_count()}, "
+        f"biomarkers: {format_inputs(winner)}"
+    )
 
 
 def write_campaign_summary(state: CampaignState) -> None:
@@ -1686,16 +1794,6 @@ def run_campaign(args: argparse.Namespace) -> None:
     write_campaign_summary(state)
     save_state(state)
 
-    print("---")
-    print(f"campaign_state:    {CAMPAIGN_STATE_PATH}")
-    print(f"status_snapshot:   {CAMPAIGN_STATUS_PATH}")
-    print(f"summary_path:      {CAMPAIGN_SUMMARY_PATH}")
-    print(f"evaluations:       {state.evaluation_count}")
-    print(f"frontier_with_age: {len(state.frontier_ids['with_age'])}")
-    print(f"frontier_no_age:   {len(state.frontier_ids['without_age'])}")
-    print(f"lane_winners:      {state.lane_winner_ids}")
-    print(f"overall_winner:    {state.overall_winner_id or 'none'}")
-    print(f"test_evaluated:    {str(state.test_evaluated).lower()}")
 
 
 def main() -> None:
