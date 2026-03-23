@@ -27,6 +27,14 @@ The goal is simple: get the highest `val_cindex` on the fixed development valida
 
 This is a survival-ranking problem, not a classification problem. Optimize the model to rank earlier aging-related deaths ahead of longer survivors by changing the selected biomarker subset before changing the scorer family.
 
+The scorer family is the naive MLP baseline:
+
+```text
+risk(x) = f((x - mu) / sigma)
+```
+
+where `x` is the selected raw input vector, `mu` and `sigma` are fit on the training split only, and `f` is a small MLP.
+
 ## What You CAN Do
 
 - Modify `train.py`

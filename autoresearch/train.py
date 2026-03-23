@@ -37,8 +37,7 @@ from prepare import (
 # Hyperparameters (edit these directly, no CLI flags needed)
 # ---------------------------------------------------------------------------
 
-UNIVARIATE_HIDDEN = 12
-PAIR_HIDDEN = 8
+MLP_HIDDEN = 32
 DROPOUT = 0.05
 LEARNING_RATE = 0.002
 WEIGHT_DECAY = 2e-4
@@ -70,71 +69,26 @@ def selected_feature_columns() -> tuple[str, ...]:
 
 
 FEATURE_COLUMNS = selected_feature_columns()
-CRP_INDEX = FEATURE_COLUMNS.index("CRP") if "CRP" in FEATURE_COLUMNS else None
 
 
-class FeatureNet(nn.Module):
-    def __init__(self, hidden_size: int):
+class SimpleMLPRiskModel(nn.Module):
+    def __init__(self, input_dim: int, hidden_size: int, dropout: float):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(1, hidden_size),
-            nn.GELU(),
-            nn.Linear(hidden_size, 1),
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.net(x).squeeze(-1)
-
-
-class PairNet(nn.Module):
-    def __init__(self, hidden_size: int, dropout: float):
-        super().__init__()
-        layers: list[nn.Module] = [
-            nn.Linear(2, hidden_size),
-            nn.GELU(),
-        ]
+        self.register_buffer("raw_mean", torch.zeros(input_dim, dtype=torch.float32))
+        self.register_buffer("raw_std", torch.ones(input_dim, dtype=torch.float32))
+        layers: list[nn.Module] = [nn.Linear(input_dim, hidden_size), nn.GELU()]
         if dropout > 0:
             layers.append(nn.Dropout(dropout))
         layers.append(nn.Linear(hidden_size, 1))
         self.net = nn.Sequential(*layers)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.net(x).squeeze(-1)
-
-
-class SparseInteractionAdditiveRiskModel(nn.Module):
-    def __init__(self, input_dim: int, univariate_hidden: int, pair_hidden: int, dropout: float):
-        super().__init__()
-        self.register_buffer("raw_mean", torch.zeros(input_dim, dtype=torch.float32))
-        self.register_buffer("raw_std", torch.ones(input_dim, dtype=torch.float32))
-        self.crp_index = CRP_INDEX if CRP_INDEX is not None else -1
-        self.use_age_pairs = INCLUDE_AGE
-
-        self.feature_nets = nn.ModuleList([FeatureNet(univariate_hidden) for _ in range(input_dim)])
-        pair_count = input_dim - 1 if self.use_age_pairs else 0
-        self.pair_nets = nn.ModuleList([PairNet(pair_hidden, dropout) for _ in range(pair_count)])
 
     def set_standardizer(self, raw_mean: torch.Tensor, raw_std: torch.Tensor) -> None:
         self.raw_mean.copy_(raw_mean)
         self.raw_std.copy_(raw_std)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        raw = x.clone()
-        if self.crp_index >= 0:
-            raw[:, self.crp_index] = torch.log(torch.clamp(raw[:, self.crp_index] * 10.0, min=1e-6))
-        standardized = (raw - self.raw_mean) / self.raw_std
-
-        additive = torch.zeros(x.shape[0], dtype=x.dtype, device=x.device)
-        for idx, feature_net in enumerate(self.feature_nets):
-            additive = additive + feature_net(standardized[:, idx : idx + 1])
-
-        pairwise = torch.zeros_like(additive)
-        if self.use_age_pairs:
-            for pair_idx, pair_net in enumerate(self.pair_nets):
-                feature_idx = pair_idx + 1
-                pairwise = pairwise + pair_net(standardized[:, [0, feature_idx]])
-
-        return additive + pairwise
+        standardized = (x - self.raw_mean) / self.raw_std
+        return self.net(standardized).squeeze(-1)
 
 
 def cox_partial_loss(risk_scores: torch.Tensor, times: torch.Tensor, events: torch.Tensor) -> torch.Tensor:
@@ -210,11 +164,8 @@ def save_scripted_model(model: nn.Module, path: Path) -> None:
 
 @torch.no_grad()
 def fit_standardizer(train_x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    raw = train_x.clone()
-    if CRP_INDEX is not None:
-        raw[:, CRP_INDEX] = torch.log(torch.clamp(raw[:, CRP_INDEX] * 10.0, min=1e-6))
-    raw_mean = raw.mean(dim=0)
-    raw_std = raw.std(dim=0, unbiased=False)
+    raw_mean = train_x.mean(dim=0)
+    raw_std = train_x.std(dim=0, unbiased=False)
     raw_std = torch.where(raw_std == 0.0, torch.ones_like(raw_std), raw_std)
     return raw_mean, raw_std
 
@@ -262,10 +213,9 @@ def main() -> None:
     train_times = torch.tensor(train_times_np, dtype=torch.float32, device=device)
     train_events = torch.tensor(train_events_np.astype("float32"), dtype=torch.float32, device=device)
 
-    model = SparseInteractionAdditiveRiskModel(
+    model = SimpleMLPRiskModel(
         len(FEATURE_COLUMNS),
-        UNIVARIATE_HIDDEN,
-        PAIR_HIDDEN,
+        MLP_HIDDEN,
         DROPOUT,
     ).to(device)
     raw_mean, raw_std = fit_standardizer(train_x)
@@ -278,7 +228,8 @@ def main() -> None:
     print(f"Biomarker count:   {len(SELECTED_BIOMARKERS)}")
     print(f"Train/val rows:    {len(train_rows)}/{len(val_rows)}")
     print(f"Time budget:       {TIME_BUDGET}s")
-    print(f"Pair count:        {len(model.pair_nets)}")
+    print(f"Formula:           risk(x)=f((x-mu)/sigma)")
+    print(f"Hidden size:       {MLP_HIDDEN}")
     print(f"Headline delta:    {SUPERIORITY_THRESHOLD:.6f}")
     print(f"Selected features: {', '.join(FEATURE_COLUMNS)}")
     if kept_val_cindex is None:
