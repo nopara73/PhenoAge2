@@ -1,33 +1,35 @@
 # BioAge Autoresearch
 
-This folder adapts Karpathy's Autoresearch idea to a biomarker-subset search benchmark.
+This folder now encodes a benchmark-safe long-run BioAge subset-search campaign.
 
 ## In-Scope Files
 
-Read these files before starting:
+Read these files before running the campaign:
 
-- `prepare.py` — fixed harness. Loads the frozen NHANES benchmark, provides the development split, computes C-index, and defines the final comparison contract. Do not modify during search.
-- `train.py` — the file you edit during search. This is where the active biomarker subset and training settings live.
-- `../evaluation-protocol.md` — the frozen benchmark rules.
+- `prepare.py` — frozen benchmark harness. Do not modify during search.
+- `train.py` — the campaign controller and trainer.
+- `../evaluation-protocol.md` — frozen benchmark rules and reporting contract.
+- `../nhanes3-bioage/README.md` — frozen cohort definition and feature pool.
 
-## Fixed Benchmark Rules
+## Frozen Benchmark Rules
 
-The benchmark is frozen. Do not redefine it during search.
+The benchmark is frozen and must remain unchanged throughout search.
 
 - Inputs are limited to `HSAGEIR` plus the 57 biomarker candidates already present in `nhanes3-bioage/cohort.csv`.
 - Candidate subsets must be compared on the same frozen fasting cohort split.
-- No extra covariates, external data, or external labels.
+- No extra covariates, external data, pretrained models, or external labels.
 - No leakage from the held-out `test` set.
-- All preprocessing must be fit only on the training portion of each development-fold split.
+- All preprocessing must be fit only on the training portion of the fixed development split.
+- Missing biomarker values must use one benchmark-wide strategy on the frozen fasting cohort.
 - The headline comparison metric is held-out `C-index`.
 
-## Experimentation Goal
+## Search Goal
 
-The goal is simple: get the highest `val_cindex` on the fixed development validation split while preserving the frozen benchmark constraints.
+The campaign should maximize development validation `C-index` while preserving the frozen benchmark contract.
 
-This is a survival-ranking problem, not a classification problem. Optimize the model to rank earlier aging-related deaths ahead of longer survivors by changing the selected biomarker subset before changing the scorer family.
+This is a survival-ranking problem, not a classification problem. The primary search dimension is the biomarker subset, not benchmark redefinition.
 
-The scorer family is the naive MLP baseline:
+The scorer family stays fixed to the naive MLP baseline:
 
 ```text
 risk(x) = f((x - mu) / sigma)
@@ -35,48 +37,55 @@ risk(x) = f((x - mu) / sigma)
 
 where `x` is the selected raw input vector, `mu` and `sigma` are fit on the training split only, and `f` is a small MLP.
 
-The fixed harness budget is `10s` of training time per run unless the benchmark contract is deliberately changed.
+## Lane-Aware Budget Policy
 
-## What You CAN Do
-
-- Modify `train.py`
-- Change the selected biomarker subset
-- Change optimizer and loss only if needed after subset exploration stalls
-- Change hyperparameters
-- Simplify the model if it preserves or improves `val_cindex`
-
-## What You CANNOT Do
-
-- Modify `prepare.py`
-- Modify `../evaluation-protocol.md`
-- Use covariates outside `HSAGEIR` plus the 57 candidate biomarkers in `nhanes3-bioage/cohort.csv`
-- Use `mortstat`, `time_months`, `permth_exm`, `ucod_leading`, or `aging_related_event` as model inputs
-- Touch the held-out `test` participants during search
-- Compare subsets on different participant sets
-
-## Output Contract
-
-`train.py` must finish by printing a summary like:
+`prepare.py` keeps the single hard global ceiling:
 
 ```text
----
-val_cindex:       0.742100
-training_seconds: 300.0
-total_seconds:    305.4
-peak_vram_mb:     1234.5
-num_steps:        412
-num_params:       4513
-best_step:        375
-artifact_path:    ...candidate_pa2.pt
+TIME_BUDGET = 10
 ```
 
-It must also save a scripted candidate model artifact at the path printed in `artifact_path` plus sidecar metadata describing the selected feature columns and train-fitted imputation values.
+`train.py` must enforce shorter internal stage budgets beneath that ceiling.
 
-## Logging Results
+- `with_age` Tier A: `1.0s`
+- `with_age` Tier B: target `2.0s`, within the measured `1.5s` to `3.0s` confirmation regime
+- `with_age` Tier C: `10.0s`
+- `without_age` Tier A: target `0.75s`, within the measured `0.5s` to `1.0s` quick-screen regime
+- `without_age` Tier B: `3.5s`
+- `without_age` Tier C: `10.0s`
 
-When an experiment is done, log it to `results.tsv` (tab-separated, not comma-separated).
+Full `10s` runs are reserved for serious finalists, not routine screening.
 
-Use these columns:
+## Search Policy
+
+`train.py` should run two parallel lanes from the start:
+
+- `with_age`: `HSAGEIR + biomarkers`
+- `without_age`: biomarkers only
+
+The search should:
+
+- seed each lane from the PhenoAge-9 subset, single-marker screens, biological-system groups, and random sparse subsets
+- use Tier A for cheap screening
+- require repeat Tier A checks for borderline gains
+- use Tier B as the first frontier-confirmation budget
+- use beam/frontier search instead of pure greedy forward selection
+- reserve Tier C for a small diverse finalist set per lane
+
+## Promotion Rules
+
+Promotion and pruning must remain validation-only.
+
+- No held-out `test` information may guide search.
+- A single Tier A result is not enough to declare a lane leader.
+- Tier A to Tier B requires improvement over the parent or lane reference at the same tier.
+- Borderline Tier A gains must be repeated at the same tier before promotion.
+- Tier B should be the first tier allowed to confirm frontier membership.
+- Tier C should be used only for serious finalists and final ranking, not for routine rescue attempts.
+
+## Logging Contract
+
+Append one row per evaluation to `results.tsv` using the existing schema:
 
 ```text
 commit	val_cindex	memory_gb	status	feature_count	selected_biomarkers	description
@@ -88,26 +97,58 @@ commit	val_cindex	memory_gb	status	feature_count	selected_biomarkers	description
 - `status`: `keep`, `discard`, or `crash`
 - `feature_count`: total selected input count including age when present
 - `selected_biomarkers`: semicolon-separated biomarker codes
-- `description`: short description of the experiment
+- `description`: parseable metadata payload
 
-Higher `val_cindex` is better.
+The `description` payload must record at least:
 
-## Experiment Loop
+- `candidate_id`
+- `lane`
+- `tier`
+- `requested_budget_s`
+- `actual_training_s`
+- `promotion`
+- `parent_id`
+- `operator`
+- `seed_family`
 
-1. Review the current git state.
-2. Modify `train.py`, primarily by changing the active biomarker subset.
-3. Commit the experiment.
-4. Run `uv run train.py > run.log 2>&1`.
-5. Read out the results from `run.log`.
-6. If the run crashes, inspect the traceback, decide whether to fix or discard, and record the crash.
-7. Record the result in `results.tsv` without committing the TSV file.
-8. Keep the candidate artifact when `val_cindex` improves by a small exploratory margin or achieves the same result with less complexity.
-9. Otherwise revert to the previous good state and continue.
+## Status And State Artifacts
+
+`train.py` should keep campaign state on disk so long runs remain resumable and auditable.
+
+- `bioage_campaign_state.json` — resumable campaign state
+- `bioage_campaign_status.json` — current frontier and best-per-lane snapshot
+- `bioage_campaign_summary.json` — finalists and winner summary
+- `campaign_artifacts/` — Tier C finalist artifacts
+
+## Finalization Rules
+
+After validation-only search completes:
+
+1. Lock one winner per lane using validation evidence only.
+2. Choose the overall primary winner from those locked lane winners.
+3. Copy the winning Tier C artifact to the default candidate artifact path.
+4. Evaluate the locked winner on held-out `test` exactly once.
+5. Write the final benchmark report to `../bioage_test_result.json`.
+
+If `test` is touched before the winner is locked, the primary benchmark is contaminated.
+
+## How To Run
+
+```bash
+# Run or resume the full campaign
+uv run train.py
+
+# Start a fresh campaign state
+uv run train.py --fresh
+
+# Smoke-test the implementation without touching results.tsv or held-out test
+uv run train.py --smoke-test
+```
 
 ## Priority Order
 
 1. Respect the frozen benchmark.
-2. Improve `val_cindex`.
-3. Prefer input-subset exploration before changing the scorer family.
-4. Prefer simpler models when performance is similar.
-5. Avoid brittle hacks.
+2. Preserve held-out test integrity.
+3. Improve validation `C-index` through subset search first.
+4. Prefer simpler and more stable subsets when performance is similar.
+5. Keep the budget policy enforceable in code and logs.
