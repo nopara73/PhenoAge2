@@ -1132,6 +1132,42 @@ def build_seed_specs(rng: random.Random) -> list[dict[str, Any]]:
     return specs
 
 
+def build_pending_seed_queue(state: CampaignState, alternate_lanes: bool) -> list[Candidate]:
+    pending = [
+        candidate
+        for candidate in state.candidates.values()
+        if candidate.parent_id is None and candidate.mean_score("A") is None
+    ]
+    if not alternate_lanes:
+        return sorted(
+            pending,
+            key=lambda candidate: (
+                candidate.lane,
+                candidate.seed_family,
+                len(candidate.biomarkers),
+                candidate.candidate_id,
+            ),
+        )
+
+    lane_buckets: dict[str, list[Candidate]] = {}
+    for lane in LANE_ORDER:
+        lane_buckets[lane] = sorted(
+            [candidate for candidate in pending if candidate.lane == lane],
+            key=lambda candidate: (
+                candidate.seed_family,
+                len(candidate.biomarkers),
+                candidate.candidate_id,
+            ),
+        )
+
+    interleaved: list[Candidate] = []
+    while any(lane_buckets[lane] for lane in LANE_ORDER):
+        for lane in LANE_ORDER:
+            if lane_buckets[lane]:
+                interleaved.append(lane_buckets[lane].pop(0))
+    return interleaved
+
+
 def initialize_seeds(state: CampaignState, rng: random.Random) -> None:
     if state.initialized_seeds:
         return
@@ -1706,19 +1742,7 @@ def run_campaign(args: argparse.Namespace) -> None:
     save_state(state)
     evaluation_limit = state.evaluation_count + args.max_evaluations
 
-    pending_seeds = sorted(
-        [
-            candidate
-            for candidate in state.candidates.values()
-            if candidate.parent_id is None and candidate.mean_score("A") is None
-        ],
-        key=lambda candidate: (
-            candidate.lane,
-            candidate.seed_family,
-            len(candidate.biomarkers),
-            candidate.candidate_id,
-        ),
-    )
+    pending_seeds = build_pending_seed_queue(state, alternate_lanes=args.smoke_test)
 
     while pending_seeds and state.evaluation_count < evaluation_limit:
         candidate = pending_seeds.pop(0)
