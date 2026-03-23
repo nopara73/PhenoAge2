@@ -16,8 +16,8 @@ Candidate models are trained on `development` participants only and scored with 
 
 ## Fixed benchmark contract
 
-- Inputs are limited to the 9 original PhenoAge biomarkers.
-- `HSAGEIR` is not allowed for PA2.
+- Inputs are limited to chronological age plus the 9 original PhenoAge biomarkers.
+- `HSAGEIR` is part of the allowed PA2 input set.
 - The held-out `test` split is frozen and must not be used during model search.
 - The headline benchmark metric is held-out `C-index`.
 

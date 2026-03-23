@@ -29,7 +29,6 @@ TIME_BUDGET = 300
 DEV_VAL_FRACTION = 0.20
 DEV_VAL_SEED = 20260321
 SUPERIORITY_THRESHOLD = 0.01
-NON_INFERIORITY_MARGIN = -0.01
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = REPO_ROOT / "nhanes3-phenoage"
@@ -262,8 +261,6 @@ def score_scripted_model(model_path: Path, rows: list[dict[str, str]], device: t
 def final_verdict(delta: float) -> str:
     if delta >= SUPERIORITY_THRESHOLD:
         return "superior"
-    if delta > NON_INFERIORITY_MARGIN:
-        return "non-inferior"
     return "inferior"
 
 

@@ -14,13 +14,13 @@ Read these files before starting:
 
 The benchmark is frozen. Do not redefine it.
 
-- Inputs for PA2 are limited to the 9 original PhenoAge biomarkers.
-- `HSAGEIR` is not allowed as an input.
+- Inputs for PA2 are limited to chronological age plus the 9 original PhenoAge biomarkers.
+- `HSAGEIR` is allowed as an input.
 - No extra covariates, external data, or external labels.
 - No leakage from the held-out `test` set.
 - All preprocessing must be fit only on the training portion of each development-fold split.
 - The headline comparison metric is held-out `C-index`.
-- Final success categories are `superior`, `non-inferior`, or `inferior` as defined in `../evaluation-protocol.md`.
+- The only headline success category is `superior` as defined in `../evaluation-protocol.md`.
 
 ## Experimentation Goal
 
@@ -40,7 +40,7 @@ This is a survival-ranking problem, not a classification problem. Optimize the m
 
 - Modify `prepare.py`
 - Modify `../evaluation-protocol.md`
-- Use `HSAGEIR` directly or indirectly
+- Use covariates outside chronological age plus the 9 PhenoAge biomarkers
 - Use `mortstat`, `time_months`, `permth_exm`, `ucod_leading`, or `aging_related_event` as model inputs
 - Touch the held-out `test` participants during search
 
@@ -60,7 +60,7 @@ best_step:        375
 artifact_path:    ...candidate_pa2.pt
 ```
 
-It must also save a scripted candidate model artifact at the path printed in `artifact_path`. The saved model must accept a raw biomarker tensor of shape `[N, 9]` and return one risk score per participant.
+It must also save a scripted candidate model artifact at the path printed in `artifact_path`. The saved model must accept a raw feature tensor containing chronological age plus the 9 PhenoAge biomarkers and return one risk score per participant.
 
 ## Logging Results
 

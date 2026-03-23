@@ -1,6 +1,6 @@
 """PA2 autoresearch training script.
 
-This is the only file the autonomous loop edits. It trains an age-free biomarker
+This is the only file the autonomous loop edits. It trains a PhenoAge 2.0
 model on the frozen development split and reports validation C-index.
 """
 
