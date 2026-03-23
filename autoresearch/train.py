@@ -88,6 +88,7 @@ MAX_EXPANSION_ROUNDS = 1_000_000
 FRONTIER_BEAM_WIDTH = 8
 FINALISTS_PER_LANE = 3
 STATUS_EVERY = 12
+MAX_INPUT_FEATURES = 10
 OVERLAP_REDUNDANCY_THRESHOLD = 0.85
 NEAR_TIE_DELTA = 0.0005
 TIER_A_BORDERLINE_DELTA = 0.001
@@ -554,11 +555,27 @@ def jaccard_overlap(a: Candidate, b: Candidate) -> float:
     return len(set_a & set_b) / len(union)
 
 
+def max_biomarker_count(include_age: bool) -> int:
+    return MAX_INPUT_FEATURES - (1 if include_age else 0)
+
+
+def biomarkers_within_feature_cap(include_age: bool, biomarkers: tuple[str, ...] | list[str]) -> bool:
+    return len(tuple(biomarkers)) <= max_biomarker_count(include_age)
+
+
+def candidate_within_feature_cap(candidate: Candidate) -> bool:
+    return candidate.feature_count() <= MAX_INPUT_FEATURES
+
+
 def selected_feature_columns(include_age: bool, biomarkers: tuple[str, ...] | list[str]) -> tuple[str, ...]:
     seen: set[str] = set()
     selected = tuple(sorted(biomarkers))
     if not selected:
         raise ValueError("At least one biomarker must be selected.")
+    if not biomarkers_within_feature_cap(include_age, selected):
+        raise ValueError(
+            f"Selected inputs exceed the search cap of {MAX_INPUT_FEATURES} total features."
+        )
     for biomarker in selected:
         if biomarker not in CANDIDATE_BIOMARKER_COLUMNS:
             raise ValueError(f"Unexpected biomarker: {biomarker}")
@@ -1053,6 +1070,7 @@ def lane_best_score(
         candidate.mean_score(tier)
         for candidate in state.candidates.values()
         if candidate.lane == lane
+        and candidate_within_feature_cap(candidate)
         and candidate.candidate_id != exclude_candidate_id
         and candidate.mean_score(tier) is not None
     ]
@@ -1101,6 +1119,7 @@ def current_frontier(state: CampaignState, lane: str) -> list[Candidate]:
         state.candidates[candidate_id]
         for candidate_id in state.frontier_ids[lane]
         if candidate_id in state.candidates
+        and candidate_within_feature_cap(state.candidates[candidate_id])
     ]
 
 
@@ -1109,6 +1128,7 @@ def refresh_frontier(state: CampaignState, lane: str) -> None:
         candidate
         for candidate in state.candidates.values()
         if candidate.lane == lane
+        and candidate_within_feature_cap(candidate)
         and candidate.mean_score("B") is not None
         and candidate.status != "crashed"
     ]
@@ -1144,6 +1164,9 @@ def refresh_frontier(state: CampaignState, lane: str) -> None:
     for candidate in state.candidates.values():
         if candidate.lane != lane or candidate.status == "crashed":
             continue
+        if not candidate_within_feature_cap(candidate):
+            candidate.status = "discarded"
+            continue
         if candidate.candidate_id in frontier_ids:
             candidate.status = "frontier"
         elif candidate.mean_score("B") is not None:
@@ -1154,7 +1177,7 @@ def choose_lane_winner(state: CampaignState, lane: str) -> Candidate | None:
     finalists = [
         candidate
         for candidate in state.candidates.values()
-        if candidate.lane == lane and candidate.mean_score("C") is not None
+        if candidate.lane == lane and candidate_within_feature_cap(candidate) and candidate.mean_score("C") is not None
     ]
     if not finalists:
         finalists = current_frontier(state, lane)
@@ -1162,7 +1185,7 @@ def choose_lane_winner(state: CampaignState, lane: str) -> Candidate | None:
         finalists = [
             candidate
             for candidate in state.candidates.values()
-            if candidate.lane == lane and candidate.mean_score("A") is not None
+            if candidate.lane == lane and candidate_within_feature_cap(candidate) and candidate.mean_score("A") is not None
         ]
     if not finalists:
         return None
@@ -1219,7 +1242,7 @@ def build_seed_specs(rng: random.Random) -> list[dict[str, Any]]:
                 "rationale": f"Biological system seed: {group_name}.",
             }
         )
-    for subset_size in (3, 5, 8, 12):
+    for subset_size in (3, 5, 8, 10):
         for sample_index in range(3):
             sampled = tuple(sorted(rng.sample(list(CANDIDATE_BIOMARKER_COLUMNS), subset_size)))
             specs.append(
@@ -1274,7 +1297,10 @@ def initialize_seeds(state: CampaignState, rng: random.Random) -> None:
         return
     seen_signatures = {candidate.signature() for candidate in state.candidates.values()}
     for lane in LANE_ORDER:
+        include_age = LANE_CONFIGS[lane].include_age
         for spec in build_seed_specs(rng):
+            if not biomarkers_within_feature_cap(include_age, spec["biomarkers"]):
+                continue
             signature = candidate_signature(lane, spec["biomarkers"])
             if signature in seen_signatures:
                 continue
@@ -1295,6 +1321,57 @@ def initialize_seeds(state: CampaignState, rng: random.Random) -> None:
 
 def candidate_needs_tier(candidate: Candidate, tier: str) -> bool:
     return len(candidate.tiers[tier]) == 0
+
+
+def best_candidate_for_feature_count(
+    state: CampaignState,
+    lane: str,
+    feature_count: int,
+) -> Candidate | None:
+    contenders = [
+        candidate
+        for candidate in state.candidates.values()
+        if candidate.lane == lane
+        and candidate.feature_count() == feature_count
+        and candidate_within_feature_cap(candidate)
+        and (
+            candidate.mean_score("C") is not None
+            or candidate.mean_score("B") is not None
+            or candidate.mean_score("A") is not None
+        )
+    ]
+    if not contenders:
+        return None
+    winner = contenders[0]
+    for candidate in contenders[1:]:
+        compare_tier = "C" if winner.mean_score("C") is not None and candidate.mean_score("C") is not None else (
+            "B" if winner.mean_score("B") is not None and candidate.mean_score("B") is not None else "A"
+        )
+        winner = preferred_candidate(winner, candidate, compare_tier)
+    return winner
+
+
+def feature_count_best_score(
+    state: CampaignState,
+    lane: str,
+    tier: str,
+    feature_count: int,
+    *,
+    exclude_candidate_id: str | None = None,
+) -> float | None:
+    values = [
+        candidate.mean_score(tier)
+        for candidate in state.candidates.values()
+        if candidate.lane == lane
+        and candidate_within_feature_cap(candidate)
+        and candidate.feature_count() == feature_count
+        and candidate.candidate_id != exclude_candidate_id
+        and candidate.mean_score(tier) is not None
+    ]
+    values = [value for value in values if value is not None]
+    if not values:
+        return None
+    return max(values)
 
 
 def tier_budget(candidate: Candidate, tier: str) -> float:
@@ -1396,9 +1473,17 @@ def tier_a_close_to_lane_frontier(
     score: float,
     lane_best_a: float | None,
     lane_best_b: float | None,
+    size_best_a: float | None,
+    size_best_b: float | None,
 ) -> bool:
-    return (lane_best_a is not None and score >= lane_best_a - TIER_A_NEAR_BEST_DELTA) or (
+    return (
+        lane_best_a is not None and score >= lane_best_a - TIER_A_NEAR_BEST_DELTA
+    ) or (
         lane_best_b is not None and score >= lane_best_b - TIER_A_NEAR_BEST_DELTA
+    ) or (
+        size_best_a is not None and score >= size_best_a - TIER_A_NEAR_BEST_DELTA
+    ) or (
+        size_best_b is not None and score >= size_best_b - TIER_A_NEAR_BEST_DELTA
     )
 
 
@@ -1428,6 +1513,9 @@ def process_candidate(
 ) -> None:
     if state.evaluation_count >= evaluation_limit:
         return
+    if not candidate_within_feature_cap(candidate):
+        candidate.status = "discarded"
+        return
 
     if candidate_needs_tier(candidate, "A"):
         result_a = evaluate_candidate_tier(
@@ -1444,12 +1532,28 @@ def process_candidate(
         parent_score = tier_a_parent_score(state, candidate)
         lane_best_a = tier_a_lane_best_score(state, candidate)
         lane_best_b = tier_b_lane_best_score(state, candidate)
+        size_best_a = feature_count_best_score(
+            state,
+            candidate.lane,
+            "A",
+            candidate.feature_count(),
+            exclude_candidate_id=candidate.candidate_id,
+        )
+        size_best_b = feature_count_best_score(
+            state,
+            candidate.lane,
+            "B",
+            candidate.feature_count(),
+            exclude_candidate_id=candidate.candidate_id,
+        )
         reference_score = tier_a_reference_score(state, candidate)
         delta = result_a.val_cindex if reference_score is None else result_a.val_cindex - reference_score
         close_to_lane_frontier = tier_a_close_to_lane_frontier(
             result_a.val_cindex,
             lane_best_a,
             lane_best_b,
+            size_best_a,
+            size_best_b,
         )
         parent_gain = None if parent_score is None else result_a.val_cindex - parent_score
         if reference_score is not None and result_a.val_cindex <= reference_score and not close_to_lane_frontier:
@@ -1492,6 +1596,20 @@ def process_candidate(
         mean_score = candidate.mean_score("A")
         lane_best_a = tier_a_lane_best_score(state, candidate)
         lane_best_b = tier_b_lane_best_score(state, candidate)
+        size_best_a = feature_count_best_score(
+            state,
+            candidate.lane,
+            "A",
+            candidate.feature_count(),
+            exclude_candidate_id=candidate.candidate_id,
+        )
+        size_best_b = feature_count_best_score(
+            state,
+            candidate.lane,
+            "B",
+            candidate.feature_count(),
+            exclude_candidate_id=candidate.candidate_id,
+        )
         reference_score = tier_a_reference_score(state, candidate)
         delta = 0.0 if reference_score is None or mean_score is None else mean_score - reference_score
         close_to_lane_frontier = False
@@ -1500,6 +1618,8 @@ def process_candidate(
                 mean_score,
                 lane_best_a,
                 lane_best_b,
+                size_best_a,
+                size_best_b,
             )
         if mean_score is not None and reference_score is None:
             promotion = "promote_to_B"
@@ -1610,6 +1730,8 @@ def propose_children_for_candidate(
         biomarker_tuple = tuple(sorted(set(biomarkers)))
         if not biomarker_tuple:
             return
+        if not biomarkers_within_feature_cap(LANE_CONFIGS[parent.lane].include_age, biomarker_tuple):
+            return
         signature = candidate_signature(parent.lane, biomarker_tuple)
         if signature in existing_signatures:
             return
@@ -1712,7 +1834,10 @@ def frontier_seed_order(state: CampaignState) -> list[Candidate]:
             seeds = [
                 candidate
                 for candidate in state.candidates.values()
-                if candidate.lane == lane and candidate.parent_id is None and candidate.mean_score("A") is not None
+                if candidate.lane == lane
+                and candidate_within_feature_cap(candidate)
+                and candidate.parent_id is None
+                and candidate.mean_score("A") is not None
             ]
             seeds.sort(
                 key=lambda candidate: (-(candidate.mean_score("A") or float("-inf")), candidate.feature_count())
@@ -1728,6 +1853,7 @@ def emit_status_snapshot(state: CampaignState, path: Path = CAMPAIGN_STATUS_PATH
         "round_index": state.round_index,
         "frontier": {},
         "lane_best_scores": {},
+        "size_winners": {},
         "lane_winners": state.lane_winner_ids,
         "overall_winner_id": state.overall_winner_id,
     }
@@ -1748,6 +1874,17 @@ def emit_status_snapshot(state: CampaignState, path: Path = CAMPAIGN_STATUS_PATH
             "tier_b": lane_best_score(state, lane, "B"),
             "tier_c": lane_best_score(state, lane, "C"),
         }
+        snapshot["size_winners"][lane] = {}
+        for feature_count in range(1, MAX_INPUT_FEATURES + 1):
+            winner = best_candidate_for_feature_count(state, lane, feature_count)
+            snapshot["size_winners"][lane][str(feature_count)] = None if winner is None else {
+                "candidate_id": winner.candidate_id,
+                "feature_count": winner.feature_count(),
+                "selected_biomarkers": list(winner.biomarkers),
+                "tier_a_score": winner.mean_score("A"),
+                "tier_b_score": winner.mean_score("B"),
+                "tier_c_score": winner.mean_score("C"),
+            }
     state.latest_status = snapshot
     path.write_text(json.dumps(snapshot, indent=2) + "\n", encoding="utf-8")
 
@@ -1766,7 +1903,10 @@ def evaluate_lane_finalists(
     contenders = [
         candidate
         for candidate in state.candidates.values()
-        if candidate.lane == lane and candidate.mean_score("B") is not None and candidate.status != "crashed"
+        if candidate.lane == lane
+        and candidate_within_feature_cap(candidate)
+        and candidate.mean_score("B") is not None
+        and candidate.status != "crashed"
     ]
     contenders.sort(
         key=lambda candidate: (
