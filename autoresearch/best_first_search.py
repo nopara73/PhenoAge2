@@ -32,6 +32,7 @@ from train import (
     LANE_ORDER,
     REFERENCE_PHENOAGE_BIOMARKERS,
     STATUS_CRASH,
+    STATUS_DISCARD,
     STATUS_KEEP,
     TIER_ORDER,
     Candidate,
@@ -569,7 +570,7 @@ def record_best_by_size(
     *,
     candidate_id: str,
     source: str,
-) -> None:
+) -> bool:
     feature_count = lane_feature_count(lane, biomarkers)
     key = str(feature_count)
     current = state.best_by_size[lane].get(key)
@@ -583,14 +584,39 @@ def record_best_by_size(
     }
     if current is None:
         state.best_by_size[lane][key] = replacement
-        return
+        return True
 
     current_tier_index = TIER_ORDER.index(current["tier"])
     candidate_tier_index = TIER_ORDER.index(tier)
     if result.val_cindex > float(current["val_cindex"]) + 1e-12:
         state.best_by_size[lane][key] = replacement
+        return True
     elif abs(result.val_cindex - float(current["val_cindex"])) <= 1e-12 and candidate_tier_index > current_tier_index:
         state.best_by_size[lane][key] = replacement
+        return True
+    return False
+
+
+def would_update_best_by_size(
+    state: BestFirstState,
+    lane: str,
+    biomarkers: tuple[str, ...],
+    tier: str,
+    result: TrainingResult,
+) -> bool:
+    feature_count = lane_feature_count(lane, biomarkers)
+    key = str(feature_count)
+    current = state.best_by_size[lane].get(key)
+    if current is None:
+        return True
+
+    current_tier_index = TIER_ORDER.index(current["tier"])
+    candidate_tier_index = TIER_ORDER.index(tier)
+    if result.val_cindex > float(current["val_cindex"]) + 1e-12:
+        return True
+    if abs(result.val_cindex - float(current["val_cindex"])) <= 1e-12 and candidate_tier_index > current_tier_index:
+        return True
+    return False
 
 
 def evaluate_subset(
@@ -659,12 +685,13 @@ def evaluate_subset(
         return None, False, candidate.candidate_id
 
     state.evaluation_count += 1
+    retained = would_update_best_by_size(state, lane, biomarkers, tier, result)
     append_result_row(
         commit_hash=commit_hash,
         candidate=candidate,
         tier=tier,
-        status=STATUS_KEEP,
-        promotion=source,
+        status=STATUS_KEEP if retained else STATUS_DISCARD,
+        promotion="keep_best_by_size" if retained else f"measured_{source}",
         requested_budget_s=requested_budget_s,
         actual_training_s=result.training_seconds,
         val_cindex=result.val_cindex,
