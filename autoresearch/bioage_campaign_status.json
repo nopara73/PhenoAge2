@@ -1,28 +1,28 @@
 {
-  "timestamp": "2026-03-24T06:35:29.486985+00:00",
-  "evaluation_count": 26150,
-  "round_index": 2541,
+  "timestamp": "2026-03-24T08:01:21.682956+00:00",
+  "evaluation_count": 26534,
+  "round_index": 2986,
   "frontier": {
     "with_age": [
       {
         "candidate_id": "cand_03893",
         "feature_count": 10,
         "tier_b_score": 0.8758108920094013,
-        "tier_c_score": null,
+        "tier_c_score": 0.8758108920094013,
         "dispersion_b": 0.0
       },
       {
         "candidate_id": "cand_02980",
         "feature_count": 10,
         "tier_b_score": 0.8752905679586704,
-        "tier_c_score": null,
+        "tier_c_score": 0.8752905679586704,
         "dispersion_b": 0.0
       },
       {
         "candidate_id": "cand_04429",
         "feature_count": 10,
         "tier_b_score": 0.8752051897088602,
-        "tier_c_score": null,
+        "tier_c_score": 0.8752051897088602,
         "dispersion_b": 0.0
       },
       {
@@ -66,21 +66,21 @@
         "candidate_id": "cand_05930",
         "feature_count": 10,
         "tier_b_score": 0.8103555762468043,
-        "tier_c_score": null,
+        "tier_c_score": 0.8103555762468043,
         "dispersion_b": 0.0
       },
       {
         "candidate_id": "cand_05741",
         "feature_count": 10,
         "tier_b_score": 0.8098996886110248,
-        "tier_c_score": null,
+        "tier_c_score": 0.8098996886110248,
         "dispersion_b": 0.0
       },
       {
         "candidate_id": "cand_07177",
         "feature_count": 10,
         "tier_b_score": 0.8098916340591559,
-        "tier_c_score": null,
+        "tier_c_score": 0.8098916340591559,
         "dispersion_b": 0.0
       },
       {
@@ -124,12 +124,12 @@
     "with_age": {
       "tier_a": 0.8758108920094013,
       "tier_b": 0.8758108920094013,
-      "tier_c": null
+      "tier_c": 0.8758108920094013
     },
     "without_age": {
       "tier_a": 0.808129298110241,
       "tier_b": 0.8103555762468043,
-      "tier_c": null
+      "tier_c": 0.8103555762468043
     }
   },
   "lane_phase": {
@@ -177,16 +177,16 @@
         "tier_c_score": null
       },
       "5": {
-        "candidate_id": "cand_01254",
+        "candidate_id": "cand_24863",
         "feature_count": 5,
         "selected_biomarkers": [
           "GRP",
           "HDP",
-          "PSP",
-          "VEP"
+          "UAP",
+          "VCP"
         ],
-        "tier_a_score": 0.8656159999999999,
-        "tier_b_score": 0.86853,
+        "tier_a_score": 0.8660052805642052,
+        "tier_b_score": 0.8698666327301547,
         "tier_c_score": null
       },
       "6": {
@@ -267,7 +267,7 @@
         ],
         "tier_a_score": 0.8758108920094013,
         "tier_b_score": 0.8758108920094013,
-        "tier_c_score": null
+        "tier_c_score": 0.8758108920094013
       }
     },
     "without_age": {
@@ -305,30 +305,30 @@
         "tier_c_score": null
       },
       "4": {
-        "candidate_id": "cand_01520",
+        "candidate_id": "cand_24888",
         "feature_count": 4,
         "selected_biomarkers": [
-          "CAPSI",
+          "BUP",
           "GHP",
           "LYP",
-          "UAP"
+          "MVPSI"
         ],
-        "tier_a_score": 0.72588,
-        "tier_b_score": null,
+        "tier_a_score": 0.7584117712442833,
+        "tier_b_score": 0.7669544289564362,
         "tier_c_score": null
       },
       "5": {
-        "candidate_id": "cand_01827",
+        "candidate_id": "cand_24917",
         "feature_count": 5,
         "selected_biomarkers": [
+          "BUP",
           "GHP",
           "LYP",
           "MVPSI",
-          "PBP",
-          "TCP"
+          "VEP"
         ],
-        "tier_a_score": 0.7637754999999999,
-        "tier_b_score": 0.76967,
+        "tier_a_score": 0.7775413319329153,
+        "tier_b_score": 0.7813978513677434,
         "tier_c_score": null
       },
       "6": {
@@ -414,100 +414,100 @@
         ],
         "tier_a_score": 0.8055969470026596,
         "tier_b_score": 0.8103555762468043,
-        "tier_c_score": null
+        "tier_c_score": 0.8103555762468043
       }
     }
   },
   "bandit": {
     "with_age": {
       "frontier_local": {
-        "pulls": 476,
+        "pulls": 501,
         "total_reward": 68.17596457285863,
-        "mean_reward": 0.14322681632953493,
-        "recent_reward_count": 5,
-        "recent_mean_reward": 0.0,
-        "selection_weight": 0.26,
-        "selection_rank": 2
-      },
-      "size_winner_local": {
-        "pulls": 2315,
-        "total_reward": 321.22892743655234,
-        "mean_reward": 0.1387597958689211,
+        "mean_reward": 0.13607976960650425,
         "recent_reward_count": 24,
-        "recent_mean_reward": 0.13333333333333333,
-        "selection_weight": 1.45,
-        "selection_rank": 1
-      },
-      "root_seed_local": {
-        "pulls": 359,
-        "total_reward": 51.44999999999992,
-        "mean_reward": 0.14331476323119755,
-        "recent_reward_count": 7,
-        "recent_mean_reward": 0.0,
-        "selection_weight": 0.13,
-        "selection_rank": 3
-      },
-      "random_restart": {
-        "pulls": 1744,
-        "total_reward": 295.80000000000064,
-        "mean_reward": 0.16961009174311964,
-        "recent_reward_count": 3,
-        "recent_mean_reward": 0.0,
-        "selection_weight": 0.08000000000000002,
-        "selection_rank": 5
-      },
-      "elite_crossover": {
-        "pulls": 188,
-        "total_reward": 8.15,
-        "mean_reward": 0.043351063829787234,
-        "recent_reward_count": 9,
-        "recent_mean_reward": 0.0,
-        "selection_weight": 0.13,
-        "selection_rank": 4
-      }
-    },
-    "without_age": {
-      "frontier_local": {
-        "pulls": 271,
-        "total_reward": 31.200000000000095,
-        "mean_reward": 0.11512915129151327,
-        "recent_reward_count": 17,
         "recent_mean_reward": 0.0,
         "selection_weight": 1.3,
         "selection_rank": 2
       },
       "size_winner_local": {
-        "pulls": 2445,
-        "total_reward": 307.6742193238495,
-        "mean_reward": 0.1258381265128219,
+        "pulls": 3119,
+        "total_reward": 325.22892743655234,
+        "mean_reward": 0.10427346182640344,
         "recent_reward_count": 24,
         "recent_mean_reward": 0.0,
         "selection_weight": 1.45,
         "selection_rank": 1
       },
       "root_seed_local": {
-        "pulls": 465,
-        "total_reward": 63.54999999999989,
-        "mean_reward": 0.13666666666666644,
-        "recent_reward_count": 12,
+        "pulls": 369,
+        "total_reward": 51.44999999999992,
+        "mean_reward": 0.13943089430894287,
+        "recent_reward_count": 17,
         "recent_mean_reward": 0.0,
         "selection_weight": 0.65,
         "selection_rank": 3
       },
       "random_restart": {
-        "pulls": 1706,
-        "total_reward": 256.20000000000675,
-        "mean_reward": 0.1501758499413873,
-        "recent_reward_count": 5,
+        "pulls": 1775,
+        "total_reward": 296.2000000000006,
+        "mean_reward": 0.16687323943662005,
+        "recent_reward_count": 24,
         "recent_mean_reward": 0.0,
         "selection_weight": 0.4,
         "selection_rank": 5
       },
       "elite_crossover": {
-        "pulls": 193,
+        "pulls": 208,
+        "total_reward": 8.15,
+        "mean_reward": 0.03918269230769231,
+        "recent_reward_count": 24,
+        "recent_mean_reward": 0.0,
+        "selection_weight": 0.65,
+        "selection_rank": 4
+      }
+    },
+    "without_age": {
+      "frontier_local": {
+        "pulls": 296,
+        "total_reward": 31.200000000000095,
+        "mean_reward": 0.10540540540540573,
+        "recent_reward_count": 24,
+        "recent_mean_reward": 0.0,
+        "selection_weight": 1.3,
+        "selection_rank": 2
+      },
+      "size_winner_local": {
+        "pulls": 3265,
+        "total_reward": 310.0742193238495,
+        "mean_reward": 0.09496913302414992,
+        "recent_reward_count": 24,
+        "recent_mean_reward": 0.0,
+        "selection_weight": 1.45,
+        "selection_rank": 1
+      },
+      "root_seed_local": {
+        "pulls": 489,
+        "total_reward": 63.54999999999989,
+        "mean_reward": 0.12995910020449875,
+        "recent_reward_count": 24,
+        "recent_mean_reward": 0.0,
+        "selection_weight": 0.65,
+        "selection_rank": 3
+      },
+      "random_restart": {
+        "pulls": 1713,
+        "total_reward": 256.20000000000675,
+        "mean_reward": 0.14956217162872548,
+        "recent_reward_count": 12,
+        "recent_mean_reward": 0.0,
+        "selection_weight": 0.4,
+        "selection_rank": 5
+      },
+      "elite_crossover": {
+        "pulls": 207,
         "total_reward": 4.302356922967826,
-        "mean_reward": 0.022292004782216716,
-        "recent_reward_count": 3,
+        "mean_reward": 0.02078433296119723,
+        "recent_reward_count": 17,
         "recent_mean_reward": 0.0,
         "selection_weight": 0.65,
         "selection_rank": 4
@@ -515,8 +515,8 @@
     }
   },
   "lane_winners": {
-    "with_age": "cand_01962",
-    "without_age": "cand_01609"
+    "with_age": "cand_03893",
+    "without_age": "cand_05741"
   },
-  "overall_winner_id": "cand_01962"
+  "overall_winner_id": "cand_03893"
 }

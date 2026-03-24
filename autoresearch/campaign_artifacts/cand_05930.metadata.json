@@ -1,0 +1,29 @@
+{
+  "benchmark_dataset": "nhanes3-bioage",
+  "feature_columns": [
+    "AMP",
+    "BUP",
+    "FOP",
+    "GHP",
+    "LYP",
+    "MVPSI",
+    "PBP",
+    "RCP",
+    "RWP",
+    "TCP"
+  ],
+  "input_feature_count": 10,
+  "age_included_in_inputs": false,
+  "imputation_values": [
+    4.134494304656982,
+    13.875432968139648,
+    6.246183395385742,
+    5.474354267120361,
+    21.922849655151367,
+    89.30038452148438,
+    3.923400402069092,
+    4.6743364334106445,
+    13.18585205078125,
+    202.56654357910156
+  ]
+}

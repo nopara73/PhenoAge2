@@ -1,0 +1,29 @@
+{
+  "benchmark_dataset": "nhanes3-bioage",
+  "feature_columns": [
+    "HSAGEIR",
+    "C3PSI",
+    "GHP",
+    "HDP",
+    "LUP",
+    "MHP",
+    "TPP",
+    "UAP",
+    "VCP",
+    "WCP"
+  ],
+  "input_feature_count": 10,
+  "age_included_in_inputs": true,
+  "imputation_values": [
+    45.43510818481445,
+    28.001731872558594,
+    5.474354267120361,
+    50.863529205322266,
+    22.435941696166992,
+    33.59015655517578,
+    7.391170501708984,
+    5.380449295043945,
+    0.6866052746772766,
+    6.967208385467529
+  ]
+}

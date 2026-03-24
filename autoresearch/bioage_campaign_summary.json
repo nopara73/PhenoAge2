@@ -1,22 +1,160 @@
 {
-  "timestamp": "2026-03-23T18:22:56.510868+00:00",
-  "evaluation_count": 8,
+  "timestamp": "2026-03-24T07:30:28.403386+00:00",
+  "evaluation_count": 26364,
   "lane_winner_ids": {
-    "with_age": null,
-    "without_age": null
+    "with_age": "cand_03893",
+    "without_age": "cand_05741"
   },
-  "overall_winner_id": null,
+  "overall_winner_id": "cand_03893",
   "frontier_ids": {
     "with_age": [
-      "cand_02052",
-      "cand_02057"
+      "cand_03893",
+      "cand_02980",
+      "cand_04429",
+      "cand_03332",
+      "cand_07950",
+      "cand_04251",
+      "cand_02751",
+      "cand_03793"
     ],
     "without_age": [
-      "cand_02133"
+      "cand_05930",
+      "cand_05741",
+      "cand_07177",
+      "cand_04439",
+      "cand_05835",
+      "cand_05915",
+      "cand_06206",
+      "cand_03661"
     ]
   },
   "finalists": {
-    "with_age": [],
-    "without_age": []
+    "with_age": [
+      {
+        "candidate_id": "cand_02980",
+        "feature_count": 10,
+        "selected_biomarkers": [
+          "ACP",
+          "C3PSI",
+          "HDP",
+          "LUP",
+          "MHP",
+          "TPP",
+          "UAP",
+          "VCP",
+          "WCP"
+        ],
+        "tier_a_score": 0.8752905679586704,
+        "tier_b_score": 0.8752905679586704,
+        "tier_c_score": 0.8752905679586704,
+        "dispersion_b": 0.0,
+        "artifact_path": "C:\\Users\\user\\Desktop\\PhenoAge2\\autoresearch\\campaign_artifacts\\cand_02980.pt"
+      },
+      {
+        "candidate_id": "cand_03893",
+        "feature_count": 10,
+        "selected_biomarkers": [
+          "C3PSI",
+          "CAPSI",
+          "HDP",
+          "LUP",
+          "MHP",
+          "TPP",
+          "UAP",
+          "VCP",
+          "WCP"
+        ],
+        "tier_a_score": 0.8758108920094013,
+        "tier_b_score": 0.8758108920094013,
+        "tier_c_score": 0.8758108920094013,
+        "dispersion_b": 0.0,
+        "artifact_path": "C:\\Users\\user\\Desktop\\PhenoAge2\\autoresearch\\campaign_artifacts\\cand_03893.pt"
+      },
+      {
+        "candidate_id": "cand_04429",
+        "feature_count": 10,
+        "selected_biomarkers": [
+          "C3PSI",
+          "GHP",
+          "HDP",
+          "LUP",
+          "MHP",
+          "TPP",
+          "UAP",
+          "VCP",
+          "WCP"
+        ],
+        "tier_a_score": 0.8752051897088602,
+        "tier_b_score": 0.8752051897088602,
+        "tier_c_score": 0.8752051897088602,
+        "dispersion_b": 0.0,
+        "artifact_path": "C:\\Users\\user\\Desktop\\PhenoAge2\\autoresearch\\campaign_artifacts\\cand_04429.pt"
+      }
+    ],
+    "without_age": [
+      {
+        "candidate_id": "cand_05741",
+        "feature_count": 10,
+        "selected_biomarkers": [
+          "AMP",
+          "BUP",
+          "FEP",
+          "FOP",
+          "GHP",
+          "LYP",
+          "MVPSI",
+          "PBP",
+          "RWP",
+          "TCP"
+        ],
+        "tier_a_score": 0.8075638685690444,
+        "tier_b_score": 0.8098996886110248,
+        "tier_c_score": 0.8098996886110248,
+        "dispersion_b": 0.0,
+        "artifact_path": "C:\\Users\\user\\Desktop\\PhenoAge2\\autoresearch\\campaign_artifacts\\cand_05741.pt"
+      },
+      {
+        "candidate_id": "cand_05930",
+        "feature_count": 10,
+        "selected_biomarkers": [
+          "AMP",
+          "BUP",
+          "FOP",
+          "GHP",
+          "LYP",
+          "MVPSI",
+          "PBP",
+          "RCP",
+          "RWP",
+          "TCP"
+        ],
+        "tier_a_score": 0.8055969470026596,
+        "tier_b_score": 0.8103555762468043,
+        "tier_c_score": 0.8103555762468043,
+        "dispersion_b": 0.0,
+        "artifact_path": "C:\\Users\\user\\Desktop\\PhenoAge2\\autoresearch\\campaign_artifacts\\cand_05930.pt"
+      },
+      {
+        "candidate_id": "cand_07177",
+        "feature_count": 10,
+        "selected_biomarkers": [
+          "AMP",
+          "BUP",
+          "FOP",
+          "GHP",
+          "HTP",
+          "LYP",
+          "PBP",
+          "RCP",
+          "RWP",
+          "TCP"
+        ],
+        "tier_a_score": 0.7990928963685248,
+        "tier_b_score": 0.8098916340591559,
+        "tier_c_score": 0.8098916340591559,
+        "dispersion_b": 0.0,
+        "artifact_path": "C:\\Users\\user\\Desktop\\PhenoAge2\\autoresearch\\campaign_artifacts\\cand_07177.pt"
+      }
+    ]
   }
 }

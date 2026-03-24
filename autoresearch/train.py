@@ -97,6 +97,7 @@ TIER_A_STRONG_DELTA = 0.003
 TIER_A_NEAR_BEST_DELTA = 0.002
 TIER_B_PROMOTION_DELTA = 0.001
 LANE_PATIENCE_EVALUATIONS = 36
+EMPTY_ROUND_PATIENCE = 16
 GROUP_MOVE_MAX_CHANGE = 3
 BANDIT_ARMS = (
     "frontier_local",
@@ -112,9 +113,10 @@ BANDIT_PARENT_LIMIT = 2
 BANDIT_RANDOM_RESTARTS_PER_PULL = 3
 BANDIT_CROSSOVER_CHILDREN_PER_PULL = 3
 BANDIT_CROSSOVER_PARENT_POOL = 8
-BANDIT_SIZE_WINNER_GROWTH_CHILDREN_PER_PARENT = 3
-BANDIT_SIZE_WINNER_MIN_FEATURE_COUNT = 5
-BANDIT_SIZE_WINNER_NEARBY_SIZE_LOOKAHEAD = 2
+BANDIT_SIZE_WINNER_PARENT_LIMIT = 4
+BANDIT_SIZE_WINNER_GROWTH_CHILDREN_PER_PARENT = 4
+BANDIT_SIZE_WINNER_MIN_FEATURE_COUNT = 3
+BANDIT_SIZE_WINNER_NEARBY_SIZE_LOOKAHEAD = 3
 BANDIT_EPSILON_FLOOR = 0.08
 BANDIT_RECENT_WINDOW = 24
 BANDIT_WEAK_ARM_RATIO = 0.55
@@ -999,8 +1001,11 @@ def train_subset(
     best_step = -1
     step = 0
     train_seconds = 0.0
+    last_step_seconds = 0.0
 
     while train_seconds < effective_budget_s:
+        if step > 0 and train_seconds + last_step_seconds > effective_budget_s:
+            break
         if dataset.device.type == "cuda":
             torch.cuda.synchronize()
         step_start = time.time()
@@ -1024,7 +1029,8 @@ def train_subset(
 
         if dataset.device.type == "cuda":
             torch.cuda.synchronize()
-        train_seconds += time.time() - step_start
+        last_step_seconds = time.time() - step_start
+        train_seconds += last_step_seconds
 
         if step % EVAL_EVERY == 0:
             val_cindex = evaluate_cindex_fast(model, val_x, dataset.val_times_np, dataset.val_events_np)
@@ -2459,7 +2465,7 @@ def execute_bandit_pull(
     best_b_before = lane_best_score(state, lane, "B")
     children: list[Candidate] = []
     if arm == "size_winner_local":
-        parents = size_winner_growth_parents(state, lane)[:BANDIT_PARENT_LIMIT]
+        parents = size_winner_growth_parents(state, lane)[:BANDIT_SIZE_WINNER_PARENT_LIMIT]
         for parent in parents:
             children.extend(
                 propose_growth_children_for_size_winner(
@@ -2875,25 +2881,17 @@ def write_campaign_summary(state: CampaignState) -> None:
     CAMPAIGN_SUMMARY_PATH.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
 
 
-def run_campaign(args: argparse.Namespace) -> None:
-    validate_biological_groups()
-    dataset = build_dataset_bundle()
-    state = load_or_create_state(args.fresh)
-    result_cache = load_result_cache()
-    rng = random.Random(DEV_VAL_SEED)
-    commit_hash = short_git_hash()
-
-    if args.smoke_test:
-        args.max_evaluations = min(args.max_evaluations, 8)
-        args.max_rounds = min(args.max_rounds, 1)
-        args.finalists_per_lane = 1
-        args.no_results_log = True
-        args.skip_test = True
-
-    initialize_seeds(state, rng)
-    save_state(state)
-    evaluation_limit = state.evaluation_count + args.max_evaluations
-
+def run_search_cycle(
+    dataset: DatasetBundle,
+    state: CampaignState,
+    args: argparse.Namespace,
+    *,
+    result_cache: dict[tuple[str, tuple[str, ...], str, str], TrainingResult],
+    rng: random.Random,
+    evaluation_limit: int,
+    commit_hash: str,
+) -> bool:
+    cycle_start_evaluations = state.evaluation_count
     pending_seeds = build_pending_seed_queue(state, alternate_lanes=True)
 
     while pending_seeds and state.evaluation_count < evaluation_limit:
@@ -2916,7 +2914,9 @@ def run_campaign(args: argparse.Namespace) -> None:
     emit_status_snapshot(state)
     save_state(state)
 
-    for round_index in range(state.round_index + 1, args.max_rounds + 1):
+    empty_rounds = 0
+    round_limit = state.round_index + args.max_rounds
+    for round_index in range(state.round_index + 1, round_limit + 1):
         if state.evaluation_count >= evaluation_limit:
             break
         state.round_index = round_index
@@ -2945,7 +2945,25 @@ def run_campaign(args: argparse.Namespace) -> None:
         emit_status_snapshot(state)
         save_state(state)
         if not proposals_made:
-            break
+            empty_rounds += 1
+            if empty_rounds >= EMPTY_ROUND_PATIENCE:
+                break
+            continue
+        empty_rounds = 0
+
+    return state.evaluation_count > cycle_start_evaluations
+
+
+def run_finalize_cycle(
+    dataset: DatasetBundle,
+    state: CampaignState,
+    args: argparse.Namespace,
+    *,
+    result_cache: dict[tuple[str, tuple[str, ...], str, str], TrainingResult],
+    evaluation_limit: int,
+    commit_hash: str,
+) -> bool:
+    cycle_start_evaluations = state.evaluation_count
 
     if not args.smoke_test:
         for lane in LANE_ORDER:
@@ -2970,6 +2988,49 @@ def run_campaign(args: argparse.Namespace) -> None:
     emit_status_snapshot(state)
     write_campaign_summary(state)
     save_state(state)
+    return state.evaluation_count > cycle_start_evaluations
+
+
+def run_campaign(args: argparse.Namespace) -> None:
+    validate_biological_groups()
+    dataset = build_dataset_bundle()
+    state = load_or_create_state(args.fresh)
+    result_cache = load_result_cache()
+    rng = random.Random(DEV_VAL_SEED)
+    commit_hash = short_git_hash()
+
+    if args.smoke_test:
+        args.max_evaluations = min(args.max_evaluations, 8)
+        args.max_rounds = min(args.max_rounds, 1)
+        args.finalists_per_lane = 1
+        args.no_results_log = True
+        args.skip_test = True
+
+    initialize_seeds(state, rng)
+    save_state(state)
+    while True:
+        evaluation_limit = state.evaluation_count + args.max_evaluations
+        search_progress = run_search_cycle(
+            dataset,
+            state,
+            args,
+            result_cache=result_cache,
+            rng=rng,
+            evaluation_limit=evaluation_limit,
+            commit_hash=commit_hash,
+        )
+        finalist_progress = run_finalize_cycle(
+            dataset,
+            state,
+            args,
+            result_cache=result_cache,
+            evaluation_limit=evaluation_limit,
+            commit_hash=commit_hash,
+        )
+        if args.smoke_test:
+            break
+        if not search_progress and not finalist_progress:
+            break
 
 
 

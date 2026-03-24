@@ -1,22 +1,26 @@
 {
-  "test_c_index": 0.8767249290839313,
+  "test_c_index": 0.872885553979643,
   "benchmark_dataset": "nhanes3-bioage",
   "evaluation_split": "test",
   "participants": 2083,
   "aging_related_deaths": 586,
   "candidate_model_path": "C:\\Users\\user\\Desktop\\PhenoAge2\\autoresearch\\candidate_bioage.pt",
+  "selected_biomarkers": [
+    "C3PSI",
+    "CAPSI",
+    "HDP",
+    "LUP",
+    "MHP",
+    "TPP",
+    "UAP",
+    "VCP",
+    "WCP"
+  ],
   "input_feature_count": 10,
   "age_included_in_inputs": true,
-  "feature_columns": [
-    "HSAGEIR",
-    "AMP",
-    "CEP",
-    "SGP",
-    "CRP",
-    "LMPPCNT",
-    "MVPSI",
-    "RWP",
-    "APPSI",
-    "WCP"
-  ]
+  "lane": "with_age",
+  "validation_cindex": 0.8758108920094013,
+  "missing_data_strategy": "train-split mean imputation fit on development-train rows only",
+  "frozen_split_seed": 20260321,
+  "training_time_ceiling_s": 10
 }
