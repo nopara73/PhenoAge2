@@ -112,6 +112,9 @@ BANDIT_PARENT_LIMIT = 2
 BANDIT_RANDOM_RESTARTS_PER_PULL = 3
 BANDIT_CROSSOVER_CHILDREN_PER_PULL = 3
 BANDIT_CROSSOVER_PARENT_POOL = 8
+BANDIT_SIZE_WINNER_GROWTH_CHILDREN_PER_PARENT = 3
+BANDIT_SIZE_WINNER_MIN_FEATURE_COUNT = 5
+BANDIT_SIZE_WINNER_NEARBY_SIZE_LOOKAHEAD = 2
 BANDIT_EPSILON_FLOOR = 0.08
 BANDIT_RECENT_WINDOW = 24
 BANDIT_WEAK_ARM_RATIO = 0.55
@@ -274,13 +277,13 @@ class LaneConfig:
 LANE_CONFIGS = {
     "with_age": LaneConfig(
         include_age=True,
-        tier_budgets={"A": 1.0, "B": 2.0, "C": float(TIME_BUDGET)},
-        tier_budget_window={"A": (1.0, 1.0), "B": (1.5, 3.0), "C": (float(TIME_BUDGET), float(TIME_BUDGET))},
+        tier_budgets={"A": 1.0, "B": 1.25, "C": float(TIME_BUDGET)},
+        tier_budget_window={"A": (1.0, 1.0), "B": (1.25, 2.0), "C": (float(TIME_BUDGET), float(TIME_BUDGET))},
     ),
     "without_age": LaneConfig(
         include_age=False,
-        tier_budgets={"A": 0.75, "B": 3.5, "C": float(TIME_BUDGET)},
-        tier_budget_window={"A": (0.5, 1.0), "B": (3.5, 3.5), "C": (float(TIME_BUDGET), float(TIME_BUDGET))},
+        tier_budgets={"A": 0.75, "B": 2.5, "C": float(TIME_BUDGET)},
+        tier_budget_window={"A": (0.5, 1.0), "B": (2.5, 3.5), "C": (float(TIME_BUDGET), float(TIME_BUDGET))},
     ),
 }
 
@@ -720,6 +723,8 @@ def load_result_cache() -> dict[tuple[str, tuple[str, ...], str, str], TrainingR
                 actual_training_s = float(actual_training_raw)
                 val_cindex = float(row["val_cindex"])
                 peak_vram_mb = float(row["memory_gb"]) * 1024.0
+                num_steps = int(description_fields.get("num_steps", "0"))
+                best_step = int(description_fields.get("best_step", "-1"))
             except (KeyError, TypeError, ValueError):
                 continue
 
@@ -729,9 +734,9 @@ def load_result_cache() -> dict[tuple[str, tuple[str, ...], str, str], TrainingR
                 training_seconds=actual_training_s,
                 total_seconds=actual_training_s,
                 peak_vram_mb=peak_vram_mb,
-                num_steps=0,
+                num_steps=num_steps,
                 num_params=0,
-                best_step=-1,
+                best_step=best_step,
                 requested_budget_s=requested_budget_s,
                 effective_budget_s=requested_budget_s,
                 feature_columns=feature_columns,
@@ -809,6 +814,8 @@ def recover_state_from_results() -> CampaignState:
                 peak_vram_mb = float(row.get("memory_gb", "0.0")) * 1024.0
                 requested_budget_s = float(description_fields.get("requested_budget_s", "0.0"))
                 actual_training_s = float(description_fields.get("actual_training_s", "0.0"))
+                num_steps = int(description_fields.get("num_steps", "0"))
+                best_step = int(description_fields.get("best_step", "-1"))
             except ValueError:
                 continue
 
@@ -821,9 +828,9 @@ def recover_state_from_results() -> CampaignState:
                     "actual_training_s": actual_training_s,
                     "val_cindex": val_cindex,
                     "peak_vram_mb": peak_vram_mb,
-                    "num_steps": 0,
+                    "num_steps": num_steps,
                     "num_params": 0,
-                    "best_step": -1,
+                    "best_step": best_step,
                     "artifact_path": None,
                     "cache_hit": str(description_fields.get("cache_hit", "false")).lower() == "true",
                     "error": description_fields.get("error"),
@@ -1119,6 +1126,8 @@ def append_result_row(
         "tier": tier,
         "requested_budget_s": f"{requested_budget_s:.3f}",
         "actual_training_s": f"{actual_training_s:.3f}",
+        "num_steps": "0" if extra_fields is None else str(extra_fields.get("num_steps", 0)),
+        "best_step": "-1" if extra_fields is None else str(extra_fields.get("best_step", -1)),
         "promotion": promotion,
         "parent_id": candidate.parent_id or "root",
         "operator": candidate.operator,
@@ -1231,6 +1240,8 @@ def record_evaluation(
         extra_fields={
             "error": error or "none",
             "cache_hit": "false" if result is None else str(result.cache_hit).lower(),
+            "num_steps": 0 if result is None else result.num_steps,
+            "best_step": -1 if result is None else result.best_step,
             "proposal_arm": candidate.proposal_arm,
         },
     )
@@ -2101,6 +2112,27 @@ def size_winner_parents(state: CampaignState, lane: str) -> list[Candidate]:
     return sort_candidates_by_search_strength(winners)
 
 
+def size_winner_growth_parents(state: CampaignState, lane: str) -> list[Candidate]:
+    winners: list[Candidate] = []
+    seen: set[str] = set()
+    for feature_count in range(BANDIT_SIZE_WINNER_MIN_FEATURE_COUNT, MAX_INPUT_FEATURES):
+        winner = best_candidate_for_feature_count(state, lane, feature_count)
+        if winner is None or winner.candidate_id in seen:
+            continue
+        if winner.mean_score("B") is None and winner.mean_score("A") is None:
+            continue
+        winners.append(winner)
+        seen.add(winner.candidate_id)
+    return sorted(
+        winners,
+        key=lambda candidate: (
+            candidate.feature_count(),
+            -(candidate_search_score(candidate) if math.isfinite(candidate_search_score(candidate)) else -1e9),
+            candidate.candidate_id,
+        ),
+    )
+
+
 def root_seed_parents(state: CampaignState, lane: str) -> list[Candidate]:
     candidates = [
         candidate
@@ -2297,7 +2329,7 @@ def parents_for_bandit_arm(state: CampaignState, lane: str, arm: str) -> list[Ca
     if arm == "frontier_local":
         return current_frontier(state, lane)
     if arm == "size_winner_local":
-        return size_winner_parents(state, lane)
+        return size_winner_growth_parents(state, lane)
     if arm == "root_seed_local":
         return root_seed_parents(state, lane)
     return []
@@ -2327,6 +2359,90 @@ def bandit_reward_for_children(
     return reward
 
 
+def propose_growth_children_for_size_winner(
+    state: CampaignState,
+    parent: Candidate,
+    rng: random.Random,
+    round_index: int,
+    *,
+    source_arm: str = "size_winner_local",
+    count: int = BANDIT_SIZE_WINNER_GROWTH_CHILDREN_PER_PARENT,
+) -> list[Candidate]:
+    if parent.feature_count() >= MAX_INPUT_FEATURES:
+        return []
+
+    existing_signatures = {candidate.signature() for candidate in state.candidates.values()}
+    included = set(parent.biomarkers)
+    proposals: list[Candidate] = []
+    proposed_markers: set[str] = set()
+
+    def maybe_add_marker(marker: str, rationale: str, seed_family: str) -> None:
+        if len(proposals) >= count or marker in included or marker in proposed_markers:
+            return
+        biomarker_tuple = tuple(sorted((*parent.biomarkers, marker)))
+        if not biomarkers_within_feature_cap(LANE_CONFIGS[parent.lane].include_age, biomarker_tuple):
+            return
+        signature = candidate_signature(parent.lane, biomarker_tuple)
+        if signature in existing_signatures:
+            return
+        candidate = Candidate(
+            candidate_id=new_candidate_id(state),
+            lane=parent.lane,
+            biomarkers=biomarker_tuple,
+            parent_id=parent.candidate_id,
+            operator="grow",
+            seed_family=seed_family,
+            proposal_arm=source_arm,
+            rationale=rationale,
+            created_round=round_index,
+        )
+        proposals.append(candidate)
+        proposed_markers.add(marker)
+        existing_signatures.add(signature)
+
+    max_target_feature_count = min(
+        MAX_INPUT_FEATURES,
+        parent.feature_count() + BANDIT_SIZE_WINNER_NEARBY_SIZE_LOOKAHEAD,
+    )
+    for target_feature_count in range(parent.feature_count() + 1, max_target_feature_count + 1):
+        winner = best_candidate_for_feature_count(state, parent.lane, target_feature_count)
+        if winner is None or winner.candidate_id == parent.candidate_id:
+            continue
+        additions = [marker for marker in winner.biomarkers if marker not in included]
+        rng.shuffle(additions)
+        for marker in additions:
+            maybe_add_marker(
+                marker,
+                (
+                    f"Bottom-up growth from {parent.candidate_id} toward "
+                    f"{winner.candidate_id} at size {target_feature_count}."
+                ),
+                "size_winner_growth",
+            )
+
+    overlapping_groups = sorted(
+        (
+            (group_name, tuple(marker for marker in group_markers if marker not in included))
+            for group_name, group_markers in BIOLOGICAL_GROUPS.items()
+            if set(group_markers) & included
+        ),
+        key=lambda item: len(item[1]),
+    )
+    for group_name, group_additions in overlapping_groups:
+        additions = list(group_additions)
+        rng.shuffle(additions)
+        for marker in additions:
+            maybe_add_marker(
+                marker,
+                f"Bottom-up grouped add from {group_name} around {parent.candidate_id}.",
+                "size_winner_group_growth",
+            )
+
+    for candidate in proposals:
+        state.candidates[candidate.candidate_id] = candidate
+    return proposals
+
+
 def execute_bandit_pull(
     dataset: DatasetBundle,
     state: CampaignState,
@@ -2342,7 +2458,19 @@ def execute_bandit_pull(
     arm = choose_bandit_arm(state, lane, rng)
     best_b_before = lane_best_score(state, lane, "B")
     children: list[Candidate] = []
-    if arm == "random_restart":
+    if arm == "size_winner_local":
+        parents = size_winner_growth_parents(state, lane)[:BANDIT_PARENT_LIMIT]
+        for parent in parents:
+            children.extend(
+                propose_growth_children_for_size_winner(
+                    state,
+                    parent,
+                    rng,
+                    round_index,
+                    source_arm=arm,
+                )
+            )
+    elif arm == "random_restart":
         children = create_random_restart_candidates(state, lane, rng, round_index)
     elif arm == "elite_crossover":
         children = create_elite_crossover_candidates(state, lane, rng, round_index)
