@@ -1,10 +1,10 @@
 {
-  "timestamp": "2026-03-24T12:15:27.752504+00:00",
+  "timestamp": "2026-03-24T14:34:06.711176+00:00",
   "stage": "search",
-  "evaluation_count": 4552,
-  "cache_hit_count": 579,
-  "frontier_pop_count": 1825,
-  "frontier_size": 3308,
+  "evaluation_count": 7516,
+  "cache_hit_count": 582,
+  "frontier_pop_count": 4792,
+  "frontier_size": 7500,
   "prior_tier": "A",
   "search_tier": "B",
   "best_by_size": {
@@ -85,20 +85,20 @@
         "timestamp": "2026-03-24T11:39:24.759734+00:00"
       },
       "8": {
-        "candidate_id": "cand_29239",
+        "candidate_id": "cand_32148",
         "biomarkers": [
           "ACP",
+          "GHP",
           "GRP",
-          "HDP",
-          "MHP",
+          "PBP",
           "UAP",
           "VCP",
           "WCP"
         ],
         "tier": "B",
-        "val_cindex": 0.8721347945364364,
+        "val_cindex": 0.872152514550548,
         "source": "add",
-        "timestamp": "2026-03-24T11:52:40.655075+00:00"
+        "timestamp": "2026-03-24T14:03:51.339599+00:00"
       },
       "9": {
         "candidate_id": "cand_28481",
@@ -184,84 +184,84 @@
         "timestamp": "2026-03-24T10:50:14.733091+00:00"
       },
       "5": {
-        "candidate_id": "cached::without_age::BUP;GHP;LYP;MVPSI;VEP",
+        "candidate_id": "cand_29787",
         "biomarkers": [
           "BUP",
           "GHP",
           "LYP",
           "MVPSI",
-          "VEP"
-        ],
-        "tier": "B",
-        "val_cindex": 0.781398,
-        "source": "add",
-        "timestamp": "2026-03-24T12:13:59.060638+00:00"
-      },
-      "6": {
-        "candidate_id": "cand_28692",
-        "biomarkers": [
-          "AMP",
-          "BUP",
-          "GHP",
-          "LYP",
-          "PBP",
-          "VEP"
-        ],
-        "tier": "B",
-        "val_cindex": 0.7894652905196313,
-        "source": "add",
-        "timestamp": "2026-03-24T11:29:10.891231+00:00"
-      },
-      "7": {
-        "candidate_id": "cand_29158",
-        "biomarkers": [
-          "AMP",
-          "BUP",
-          "GHP",
-          "LYP",
-          "PBP",
-          "RWP",
-          "VEP"
-        ],
-        "tier": "B",
-        "val_cindex": 0.7948473420784288,
-        "source": "swap",
-        "timestamp": "2026-03-24T11:49:14.209201+00:00"
-      },
-      "8": {
-        "candidate_id": "cached::without_age::AMP;BUP;GHP;LYP;PBP;RWP;SGP;TCP",
-        "biomarkers": [
-          "AMP",
-          "BUP",
-          "GHP",
-          "LYP",
-          "PBP",
-          "RWP",
-          "SGP",
           "TCP"
         ],
         "tier": "B",
-        "val_cindex": 0.793725,
-        "source": "swap",
-        "timestamp": "2026-03-24T11:16:30.039802+00:00"
+        "val_cindex": 0.7835065330470209,
+        "source": "add",
+        "timestamp": "2026-03-24T12:17:05.965848+00:00"
       },
-      "9": {
-        "candidate_id": "cand_28139",
+      "6": {
+        "candidate_id": "cand_30318",
         "biomarkers": [
           "AMP",
           "BUP",
-          "CEP",
           "GHP",
           "LYP",
+          "MVPSI",
+          "TCP"
+        ],
+        "tier": "B",
+        "val_cindex": 0.7909763244502366,
+        "source": "add",
+        "timestamp": "2026-03-24T12:41:01.432769+00:00"
+      },
+      "7": {
+        "candidate_id": "cand_31782",
+        "biomarkers": [
+          "AMP",
+          "BUP",
+          "GHP",
+          "LYP",
+          "MVPSI",
+          "PBP",
+          "VEP"
+        ],
+        "tier": "B",
+        "val_cindex": 0.7979386790857117,
+        "source": "add",
+        "timestamp": "2026-03-24T13:45:48.773949+00:00"
+      },
+      "8": {
+        "candidate_id": "cand_32687",
+        "biomarkers": [
+          "AMP",
+          "BUP",
+          "GHP",
+          "LYP",
+          "MVPSI",
+          "PBP",
+          "RWP",
+          "VEP"
+        ],
+        "tier": "B",
+        "val_cindex": 0.8016437729454047,
+        "source": "add",
+        "timestamp": "2026-03-24T14:32:28.587777+00:00"
+      },
+      "9": {
+        "candidate_id": "cand_31936",
+        "biomarkers": [
+          "AMP",
+          "BUP",
+          "GHP",
+          "LYP",
+          "MVPSI",
           "PBP",
           "RWP",
           "SGP",
           "VEP"
         ],
         "tier": "B",
-        "val_cindex": 0.7963986487683785,
+        "val_cindex": 0.800413037419837,
         "source": "add",
-        "timestamp": "2026-03-24T10:55:34.473042+00:00"
+        "timestamp": "2026-03-24T13:53:03.345918+00:00"
       },
       "10": {
         "candidate_id": "cand_28292",
