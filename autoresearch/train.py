@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import random
 import shutil
 import subprocess
@@ -97,11 +98,31 @@ TIER_A_NEAR_BEST_DELTA = 0.002
 TIER_B_PROMOTION_DELTA = 0.001
 LANE_PATIENCE_EVALUATIONS = 36
 GROUP_MOVE_MAX_CHANGE = 3
-BANDIT_ARMS = ("frontier_local", "size_winner_local", "root_seed_local", "random_restart")
+BANDIT_ARMS = (
+    "frontier_local",
+    "size_winner_local",
+    "root_seed_local",
+    "random_restart",
+    "elite_crossover",
+)
 BANDIT_EPSILON = 0.20
+BANDIT_STALLED_EPSILON = 0.45
 BANDIT_PULLS_PER_LANE_PER_ROUND = 2
 BANDIT_PARENT_LIMIT = 2
 BANDIT_RANDOM_RESTARTS_PER_PULL = 3
+BANDIT_CROSSOVER_CHILDREN_PER_PULL = 3
+BANDIT_CROSSOVER_PARENT_POOL = 8
+BANDIT_EPSILON_FLOOR = 0.08
+BANDIT_RECENT_WINDOW = 24
+BANDIT_WEAK_ARM_RATIO = 0.55
+BANDIT_VERY_WEAK_ARM_RATIO = 0.30
+BANDIT_BREAKOUT_TARGET_GAP = 0.002
+BANDIT_RECENT_REWARD_VERSION = 2
+
+LANE_REFERENCE_TARGETS = {
+    "with_age": 0.876725,
+    "without_age": 0.766521,
+}
 
 BIOLOGICAL_GROUPS = {
     "liver_proteins": (
@@ -409,6 +430,13 @@ class CampaignState:
             for lane in LANE_ORDER
         }
     )
+    bandit_recent_reward_version: int = BANDIT_RECENT_REWARD_VERSION
+    bandit_recent_rewards: dict[str, dict[str, list[float]]] = field(
+        default_factory=lambda: {
+            lane: {arm: [] for arm in BANDIT_ARMS}
+            for lane in LANE_ORDER
+        }
+    )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -424,6 +452,8 @@ class CampaignState:
             "initialized_seeds": self.initialized_seeds,
             "latest_status": self.latest_status,
             "bandit_stats": self.bandit_stats,
+            "bandit_recent_reward_version": self.bandit_recent_reward_version,
+            "bandit_recent_rewards": self.bandit_recent_rewards,
         }
 
     @classmethod
@@ -445,6 +475,10 @@ class CampaignState:
         state.initialized_seeds = bool(payload.get("initialized_seeds", False))
         state.latest_status = dict(payload.get("latest_status", {}))
         raw_bandit_stats = payload.get("bandit_stats", {})
+        raw_bandit_recent_reward_version = int(
+            payload.get("bandit_recent_reward_version", BANDIT_RECENT_REWARD_VERSION - 1)
+        )
+        raw_bandit_recent_rewards = payload.get("bandit_recent_rewards", {})
         state.bandit_stats = {
             lane: {
                 arm: {
@@ -455,6 +489,23 @@ class CampaignState:
             }
             for lane in LANE_ORDER
         }
+        state.bandit_recent_reward_version = BANDIT_RECENT_REWARD_VERSION
+        if raw_bandit_recent_reward_version == BANDIT_RECENT_REWARD_VERSION:
+            state.bandit_recent_rewards = {
+                lane: {
+                    arm: [
+                        float(value)
+                        for value in raw_bandit_recent_rewards.get(lane, {}).get(arm, [])[-BANDIT_RECENT_WINDOW:]
+                    ]
+                    for arm in BANDIT_ARMS
+                }
+                for lane in LANE_ORDER
+            }
+        else:
+            state.bandit_recent_rewards = {
+                lane: {arm: [] for arm in BANDIT_ARMS}
+                for lane in LANE_ORDER
+            }
         return state
 
 
@@ -1842,11 +1893,46 @@ def lane_stalled(state: CampaignState, lane: str) -> bool:
     return max(scores) - min(scores) < TIER_A_BORDERLINE_DELTA
 
 
+def lane_reference_target(lane: str) -> float | None:
+    return LANE_REFERENCE_TARGETS.get(lane)
+
+
+def lane_reference_gap(state: CampaignState, lane: str) -> float | None:
+    target = lane_reference_target(lane)
+    best_b = lane_best_score(state, lane, "B")
+    if target is None or best_b is None:
+        return None
+    return target - best_b
+
+
+def lane_scored_candidate_count(state: CampaignState, lane: str, tier: str = "B") -> int:
+    return sum(
+        1
+        for candidate in state.candidates.values()
+        if candidate.lane == lane
+        and candidate_within_feature_cap(candidate)
+        and candidate.mean_score(tier) is not None
+    )
+
+
+def lane_search_phase(state: CampaignState, lane: str) -> str:
+    if lane_best_score(state, lane, "B") is None or lane_scored_candidate_count(state, lane, "B") < FRONTIER_BEAM_WIDTH:
+        return "discovery"
+    reference_gap = lane_reference_gap(state, lane)
+    if lane_stalled(state, lane) or (reference_gap is not None and reference_gap <= BANDIT_BREAKOUT_TARGET_GAP):
+        return "breakout"
+    return "consolidation"
+
+
 def bandit_arm_stats(state: CampaignState, lane: str, arm: str) -> dict[str, float]:
     return state.bandit_stats.setdefault(lane, {}).setdefault(
         arm,
         {"pulls": 0.0, "total_reward": 0.0},
     )
+
+
+def bandit_recent_rewards(state: CampaignState, lane: str, arm: str) -> list[float]:
+    return state.bandit_recent_rewards.setdefault(lane, {}).setdefault(arm, [])
 
 
 def bandit_arm_mean_reward(state: CampaignState, lane: str, arm: str) -> float:
@@ -1857,28 +1943,127 @@ def bandit_arm_mean_reward(state: CampaignState, lane: str, arm: str) -> float:
     return stats["total_reward"] / pulls
 
 
+def bandit_recent_mean_reward(state: CampaignState, lane: str, arm: str) -> float | None:
+    rewards = bandit_recent_rewards(state, lane, arm)
+    if not rewards:
+        return None
+    return float(sum(rewards) / len(rewards))
+
+
+def bandit_arm_strength(state: CampaignState, lane: str, arm: str) -> float:
+    recent_mean = bandit_recent_mean_reward(state, lane, arm)
+    if recent_mean is not None:
+        return recent_mean
+    lifetime_mean = bandit_arm_mean_reward(state, lane, arm)
+    return 0.0 if not math.isfinite(lifetime_mean) else lifetime_mean
+
+
+def bandit_phase_base_weight(phase: str, arm: str) -> float:
+    phase_weights = {
+        "discovery": {
+            "frontier_local": 1.00,
+            "size_winner_local": 1.05,
+            "root_seed_local": 1.00,
+            "random_restart": 1.00,
+            "elite_crossover": 0.90,
+        },
+        "consolidation": {
+            "frontier_local": 1.20,
+            "size_winner_local": 1.35,
+            "root_seed_local": 0.80,
+            "random_restart": 0.70,
+            "elite_crossover": 0.75,
+        },
+        "breakout": {
+            "frontier_local": 1.30,
+            "size_winner_local": 1.45,
+            "root_seed_local": 0.65,
+            "random_restart": 0.40,
+            "elite_crossover": 0.65,
+        },
+    }
+    return phase_weights.get(phase, phase_weights["discovery"]).get(arm, 1.0)
+
+
+def bandit_arm_selection_weight(state: CampaignState, lane: str, arm: str) -> float:
+    phase = lane_search_phase(state, lane)
+    weight = bandit_phase_base_weight(phase, arm)
+    pulls = bandit_arm_stats(state, lane, arm)["pulls"]
+    strengths = [bandit_arm_strength(state, lane, candidate_arm) for candidate_arm in BANDIT_ARMS]
+    best_strength = max(strengths, default=0.0)
+    arm_strength = bandit_arm_strength(state, lane, arm)
+    if pulls <= 0:
+        unseen_multiplier = 0.95 if phase == "discovery" else 0.60 if phase == "consolidation" else 0.50
+        return max(0.01, weight * unseen_multiplier)
+    if best_strength > 0.0:
+        relative_strength = arm_strength / best_strength
+        if relative_strength < BANDIT_VERY_WEAK_ARM_RATIO:
+            weight *= 0.20
+        elif relative_strength < BANDIT_WEAK_ARM_RATIO:
+            weight *= 0.45
+        elif relative_strength < 0.80:
+            weight *= 0.70
+    return max(0.01, weight)
+
+
+def weighted_bandit_choice(
+    rng: random.Random,
+    weighted_arms: list[tuple[str, float]],
+) -> str:
+    total_weight = sum(max(0.0, weight) for _, weight in weighted_arms)
+    if total_weight <= 0.0:
+        return rng.choice([arm for arm, _ in weighted_arms])
+    draw = rng.random() * total_weight
+    running = 0.0
+    for arm, weight in weighted_arms:
+        running += max(0.0, weight)
+        if draw <= running:
+            return arm
+    return weighted_arms[-1][0]
+
+
+def bandit_epsilon_for_lane(state: CampaignState, lane: str) -> float:
+    phase = lane_search_phase(state, lane)
+    if phase == "discovery":
+        epsilon = BANDIT_EPSILON
+    elif phase == "consolidation":
+        epsilon = 0.14
+    else:
+        epsilon = 0.16 if lane_stalled(state, lane) else 0.12
+    return max(BANDIT_EPSILON_FLOOR, epsilon)
+
+
 def choose_bandit_arm(state: CampaignState, lane: str, rng: random.Random) -> str:
+    phase = lane_search_phase(state, lane)
     untried = [arm for arm in BANDIT_ARMS if bandit_arm_stats(state, lane, arm)["pulls"] <= 0]
     if untried:
-        return rng.choice(untried)
-    if rng.random() < BANDIT_EPSILON:
-        return rng.choice(list(BANDIT_ARMS))
+        return weighted_bandit_choice(
+            rng,
+            [(arm, bandit_phase_base_weight(phase, arm)) for arm in untried],
+        )
+    weighted_arms = [(arm, bandit_arm_selection_weight(state, lane, arm)) for arm in BANDIT_ARMS]
+    if rng.random() < bandit_epsilon_for_lane(state, lane):
+        return weighted_bandit_choice(rng, weighted_arms)
     ranked = sorted(
-        BANDIT_ARMS,
-        key=lambda arm: (
-            bandit_arm_mean_reward(state, lane, arm),
-            -bandit_arm_stats(state, lane, arm)["pulls"],
-            arm,
+        weighted_arms,
+        key=lambda item: (
+            item[1],
+            bandit_arm_strength(state, lane, item[0]),
+            -bandit_arm_stats(state, lane, item[0])["pulls"],
+            item[0],
         ),
-        reverse=True,
     )
-    return ranked[0]
+    return ranked[-1][0]
 
 
 def update_bandit_arm(state: CampaignState, lane: str, arm: str, reward: float) -> None:
     stats = bandit_arm_stats(state, lane, arm)
     stats["pulls"] += 1.0
     stats["total_reward"] += max(0.0, reward)
+    recent_rewards = bandit_recent_rewards(state, lane, arm)
+    recent_rewards.append(max(0.0, reward))
+    if len(recent_rewards) > BANDIT_RECENT_WINDOW:
+        del recent_rewards[:-BANDIT_RECENT_WINDOW]
 
 
 def sort_candidates_by_search_strength(candidates: list[Candidate]) -> list[Candidate]:
@@ -1892,6 +2077,15 @@ def sort_candidates_by_search_strength(candidates: list[Candidate]) -> list[Cand
             candidate.candidate_id,
         ),
         reverse=True,
+    )
+
+
+def candidate_search_score(candidate: Candidate) -> float:
+    return (
+        candidate.mean_score("C")
+        or candidate.mean_score("B")
+        or candidate.mean_score("A")
+        or float("-inf")
     )
 
 
@@ -1971,6 +2165,134 @@ def create_random_restart_candidates(
     return proposals
 
 
+def crossover_parent_pool(state: CampaignState, lane: str) -> list[Candidate]:
+    pooled: list[Candidate] = []
+    seen: set[str] = set()
+    for source in (current_frontier(state, lane), size_winner_parents(state, lane), root_seed_parents(state, lane)):
+        for candidate in source:
+            if candidate.candidate_id in seen or not candidate_within_feature_cap(candidate):
+                continue
+            if candidate.mean_score("B") is None and candidate.mean_score("A") is None:
+                continue
+            pooled.append(candidate)
+            seen.add(candidate.candidate_id)
+    return sort_candidates_by_search_strength(pooled)
+
+
+def crossover_parent_pairs(state: CampaignState, lane: str) -> list[tuple[Candidate, Candidate]]:
+    pool = crossover_parent_pool(state, lane)[:BANDIT_CROSSOVER_PARENT_POOL]
+    if len(pool) < 2:
+        return []
+    pairs: list[tuple[Candidate, Candidate]] = []
+    for index, parent_a in enumerate(pool):
+        for parent_b in pool[index + 1 :]:
+            overlap = jaccard_overlap(parent_a, parent_b)
+            if overlap >= 0.98:
+                continue
+            pairs.append((parent_a, parent_b))
+    pairs.sort(
+        key=lambda pair: (
+            candidate_search_score(pair[0]) + candidate_search_score(pair[1]),
+            -abs(jaccard_overlap(pair[0], pair[1]) - 0.5),
+            -abs(len(pair[0].biomarkers) - len(pair[1].biomarkers)),
+        ),
+        reverse=True,
+    )
+    return pairs
+
+
+def crossover_biomarkers_for_pair(
+    parent_a: Candidate,
+    parent_b: Candidate,
+    target_size: int,
+    rng: random.Random,
+) -> tuple[str, ...]:
+    shared = sorted(set(parent_a.biomarkers) & set(parent_b.biomarkers))
+    left_only = [marker for marker in parent_a.biomarkers if marker not in shared]
+    right_only = [marker for marker in parent_b.biomarkers if marker not in shared]
+    rng.shuffle(left_only)
+    rng.shuffle(right_only)
+    selected = list(shared)
+    if len(selected) > target_size:
+        selected = rng.sample(selected, k=target_size)
+    mixed: list[str] = []
+    while left_only or right_only:
+        if left_only:
+            mixed.append(left_only.pop())
+        if right_only:
+            mixed.append(right_only.pop())
+    for marker in mixed:
+        if len(selected) >= target_size:
+            break
+        if marker not in selected:
+            selected.append(marker)
+    if len(selected) < target_size:
+        union = [marker for marker in sorted(set(parent_a.biomarkers) | set(parent_b.biomarkers)) if marker not in selected]
+        rng.shuffle(union)
+        selected.extend(union[: target_size - len(selected)])
+    return tuple(sorted(selected))
+
+
+def create_elite_crossover_candidates(
+    state: CampaignState,
+    lane: str,
+    rng: random.Random,
+    round_index: int,
+    count: int = BANDIT_CROSSOVER_CHILDREN_PER_PULL,
+) -> list[Candidate]:
+    include_age = LANE_CONFIGS[lane].include_age
+    max_biomarkers = max_biomarker_count(include_age)
+    existing_signatures = {candidate.signature() for candidate in state.candidates.values()}
+    proposals: list[Candidate] = []
+    for parent_a, parent_b in crossover_parent_pairs(state, lane):
+        if len(proposals) >= count:
+            break
+        shared_count = len(set(parent_a.biomarkers) & set(parent_b.biomarkers))
+        union_count = len(set(parent_a.biomarkers) | set(parent_b.biomarkers))
+        target_sizes: list[int] = []
+        for size in (
+            max(shared_count, min(len(parent_a.biomarkers), len(parent_b.biomarkers))),
+            max(shared_count, round((len(parent_a.biomarkers) + len(parent_b.biomarkers)) / 2)),
+            max(shared_count, max(len(parent_a.biomarkers), len(parent_b.biomarkers))),
+        ):
+            clipped = min(max(1, int(size)), max_biomarkers, union_count)
+            if clipped not in target_sizes:
+                target_sizes.append(clipped)
+        primary_parent, secondary_parent = sorted(
+            (parent_a, parent_b),
+            key=candidate_search_score,
+            reverse=True,
+        )
+        for target_size in target_sizes:
+            if len(proposals) >= count:
+                break
+            biomarkers = crossover_biomarkers_for_pair(primary_parent, secondary_parent, target_size, rng)
+            if not biomarkers or not biomarkers_within_feature_cap(include_age, biomarkers):
+                continue
+            signature = candidate_signature(lane, biomarkers)
+            if signature in existing_signatures:
+                continue
+            candidate = Candidate(
+                candidate_id=new_candidate_id(state),
+                lane=lane,
+                biomarkers=biomarkers,
+                parent_id=primary_parent.candidate_id,
+                operator="crossover",
+                seed_family="elite_crossover",
+                proposal_arm="elite_crossover",
+                rationale=(
+                    f"Elite crossover of {primary_parent.candidate_id} "
+                    f"with {secondary_parent.candidate_id}."
+                ),
+                created_round=round_index,
+            )
+            proposals.append(candidate)
+            existing_signatures.add(signature)
+    for candidate in proposals:
+        state.candidates[candidate.candidate_id] = candidate
+    return proposals
+
+
 def parents_for_bandit_arm(state: CampaignState, lane: str, arm: str) -> list[Candidate]:
     if arm == "frontier_local":
         return current_frontier(state, lane)
@@ -1994,7 +2316,7 @@ def bandit_reward_for_children(
             reward += 0.4
             if child.status in {"confirmed", "frontier"}:
                 reward += 0.8
-        elif child.mean_score("A") is not None:
+        elif child.status in {"promote_to_B", "retest_A"} and child.mean_score("A") is not None:
             reward += 0.05
     best_b_after = lane_best_score(state, lane, "B")
     if best_b_after is not None:
@@ -2022,10 +2344,9 @@ def execute_bandit_pull(
     children: list[Candidate] = []
     if arm == "random_restart":
         children = create_random_restart_candidates(state, lane, rng, round_index)
+    elif arm == "elite_crossover":
+        children = create_elite_crossover_candidates(state, lane, rng, round_index)
     else:
-        if arm == "frontier_local" and lane_stalled(state, lane):
-            update_bandit_arm(state, lane, arm, 0.0)
-            return False
         parents = parents_for_bandit_arm(state, lane, arm)[:BANDIT_PARENT_LIMIT]
         for parent in parents:
             children.extend(
@@ -2209,12 +2530,15 @@ def emit_status_snapshot(state: CampaignState, path: Path = CAMPAIGN_STATUS_PATH
         "round_index": state.round_index,
         "frontier": {},
         "lane_best_scores": {},
+        "lane_phase": {},
+        "benchmark_gap": {},
         "size_winners": {},
         "bandit": {},
         "lane_winners": state.lane_winner_ids,
         "overall_winner_id": state.overall_winner_id,
     }
     for lane in LANE_ORDER:
+        phase = lane_search_phase(state, lane)
         frontier = current_frontier(state, lane)
         snapshot["frontier"][lane] = [
             {
@@ -2231,6 +2555,17 @@ def emit_status_snapshot(state: CampaignState, path: Path = CAMPAIGN_STATUS_PATH
             "tier_b": lane_best_score(state, lane, "B"),
             "tier_c": lane_best_score(state, lane, "C"),
         }
+        snapshot["lane_phase"][lane] = phase
+        snapshot["benchmark_gap"][lane] = lane_reference_gap(state, lane)
+        arm_ranking = sorted(
+            BANDIT_ARMS,
+            key=lambda arm: (
+                bandit_arm_selection_weight(state, lane, arm),
+                bandit_arm_strength(state, lane, arm),
+                arm,
+            ),
+            reverse=True,
+        )
         snapshot["bandit"][lane] = {
             arm: {
                 "pulls": int(bandit_arm_stats(state, lane, arm)["pulls"]),
@@ -2240,6 +2575,10 @@ def emit_status_snapshot(state: CampaignState, path: Path = CAMPAIGN_STATUS_PATH
                     if bandit_arm_stats(state, lane, arm)["pulls"] <= 0
                     else bandit_arm_mean_reward(state, lane, arm)
                 ),
+                "recent_reward_count": len(bandit_recent_rewards(state, lane, arm)),
+                "recent_mean_reward": bandit_recent_mean_reward(state, lane, arm),
+                "selection_weight": bandit_arm_selection_weight(state, lane, arm),
+                "selection_rank": arm_ranking.index(arm) + 1,
             }
             for arm in BANDIT_ARMS
         }

@@ -1,7 +1,7 @@
 {
-  "timestamp": "2026-03-23T19:44:30.399492+00:00",
-  "evaluation_count": 4938,
-  "round_index": 85,
+  "timestamp": "2026-03-24T05:48:33.997439+00:00",
+  "evaluation_count": 25497,
+  "round_index": 2392,
   "frontier": {
     "with_age": [
       {
@@ -19,9 +19,30 @@
         "dispersion_b": 0.0
       },
       {
+        "candidate_id": "cand_04429",
+        "feature_count": 10,
+        "tier_b_score": 0.8752051897088602,
+        "tier_c_score": null,
+        "dispersion_b": 0.0
+      },
+      {
         "candidate_id": "cand_03332",
         "feature_count": 10,
         "tier_b_score": 0.8751182005486761,
+        "tier_c_score": null,
+        "dispersion_b": 0.0
+      },
+      {
+        "candidate_id": "cand_07950",
+        "feature_count": 10,
+        "tier_b_score": 0.8750006040913901,
+        "tier_c_score": null,
+        "dispersion_b": 0.0
+      },
+      {
+        "candidate_id": "cand_04251",
+        "feature_count": 10,
+        "tier_b_score": 0.8749023385585896,
         "tier_c_score": null,
         "dispersion_b": 0.0
       },
@@ -38,83 +59,62 @@
         "tier_b_score": 0.8747589675353232,
         "tier_c_score": null,
         "dispersion_b": 0.0
-      },
-      {
-        "candidate_id": "cand_02424",
-        "feature_count": 10,
-        "tier_b_score": 0.8745447164556106,
-        "tier_c_score": null,
-        "dispersion_b": 0.0
-      },
-      {
-        "candidate_id": "cand_02839",
-        "feature_count": 10,
-        "tier_b_score": 0.8745253855311252,
-        "tier_c_score": null,
-        "dispersion_b": 0.0
-      },
-      {
-        "candidate_id": "cand_03744",
-        "feature_count": 10,
-        "tier_b_score": 0.8743417417485143,
-        "tier_c_score": null,
-        "dispersion_b": 0.0
       }
     ],
     "without_age": [
       {
+        "candidate_id": "cand_05930",
+        "feature_count": 10,
+        "tier_b_score": 0.8103555762468043,
+        "tier_c_score": null,
+        "dispersion_b": 0.0
+      },
+      {
+        "candidate_id": "cand_05741",
+        "feature_count": 10,
+        "tier_b_score": 0.8098996886110248,
+        "tier_c_score": null,
+        "dispersion_b": 0.0
+      },
+      {
+        "candidate_id": "cand_07177",
+        "feature_count": 10,
+        "tier_b_score": 0.8098916340591559,
+        "tier_c_score": null,
+        "dispersion_b": 0.0
+      },
+      {
+        "candidate_id": "cand_04439",
+        "feature_count": 10,
+        "tier_b_score": 0.8096644956964529,
+        "tier_c_score": null,
+        "dispersion_b": 0.0
+      },
+      {
+        "candidate_id": "cand_05835",
+        "feature_count": 10,
+        "tier_b_score": 0.8091796116739453,
+        "tier_c_score": null,
+        "dispersion_b": 0.0
+      },
+      {
+        "candidate_id": "cand_05915",
+        "feature_count": 10,
+        "tier_b_score": 0.8090442952025478,
+        "tier_c_score": null,
+        "dispersion_b": 0.0
+      },
+      {
+        "candidate_id": "cand_06206",
+        "feature_count": 10,
+        "tier_b_score": 0.8090152988158198,
+        "tier_c_score": null,
+        "dispersion_b": 0.0
+      },
+      {
         "candidate_id": "cand_03661",
         "feature_count": 10,
         "tier_b_score": 0.8089621387734851,
-        "tier_c_score": null,
-        "dispersion_b": 0.0
-      },
-      {
-        "candidate_id": "cand_03884",
-        "feature_count": 10,
-        "tier_b_score": 0.8089154223726455,
-        "tier_c_score": null,
-        "dispersion_b": 0.0
-      },
-      {
-        "candidate_id": "cand_03512",
-        "feature_count": 10,
-        "tier_b_score": 0.8086673421750834,
-        "tier_c_score": null,
-        "dispersion_b": 0.0
-      },
-      {
-        "candidate_id": "cand_03498",
-        "feature_count": 10,
-        "tier_b_score": 0.8085739093734042,
-        "tier_c_score": null,
-        "dispersion_b": 0.0
-      },
-      {
-        "candidate_id": "cand_03880",
-        "feature_count": 10,
-        "tier_b_score": 0.8082887782372452,
-        "tier_c_score": null,
-        "dispersion_b": 0.0
-      },
-      {
-        "candidate_id": "cand_03532",
-        "feature_count": 10,
-        "tier_b_score": 0.8079069924786595,
-        "tier_c_score": null,
-        "dispersion_b": 0.0
-      },
-      {
-        "candidate_id": "cand_03830",
-        "feature_count": 10,
-        "tier_b_score": 0.8076428031773596,
-        "tier_c_score": null,
-        "dispersion_b": 0.0
-      },
-      {
-        "candidate_id": "cand_03887",
-        "feature_count": 10,
-        "tier_b_score": 0.8076121958802578,
         "tier_c_score": null,
         "dispersion_b": 0.0
       }
@@ -127,10 +127,18 @@
       "tier_c": null
     },
     "without_age": {
-      "tier_a": 0.8063685730717,
-      "tier_b": 0.8089621387734851,
+      "tier_a": 0.808129298110241,
+      "tier_b": 0.8103555762468043,
       "tier_c": null
     }
+  },
+  "lane_phase": {
+    "with_age": "breakout",
+    "without_age": "breakout"
+  },
+  "benchmark_gap": {
+    "with_age": 0.000914107990598656,
+    "without_age": -0.04383457624680431
   },
   "size_winners": {
     "with_age": {
@@ -372,40 +380,40 @@
         "tier_c_score": null
       },
       "9": {
-        "candidate_id": "cand_03826",
+        "candidate_id": "cand_05721",
         "feature_count": 9,
         "selected_biomarkers": [
           "AMP",
           "BUP",
-          "CLPSI",
+          "FOP",
           "GHP",
           "LYP",
           "MVPSI",
           "PBP",
           "RWP",
-          "VEP"
+          "TCP"
         ],
-        "tier_a_score": 0.8010799543145819,
-        "tier_b_score": 0.8060769982940459,
+        "tier_a_score": 0.8031797759868033,
+        "tier_b_score": 0.8089589169527375,
         "tier_c_score": null
       },
       "10": {
-        "candidate_id": "cand_03498",
+        "candidate_id": "cand_05930",
         "feature_count": 10,
         "selected_biomarkers": [
           "AMP",
           "BUP",
+          "FOP",
           "GHP",
-          "HGP",
           "LYP",
           "MVPSI",
           "PBP",
+          "RCP",
           "RWP",
-          "VEP",
-          "WCP"
+          "TCP"
         ],
-        "tier_a_score": 0.8048929791693179,
-        "tier_b_score": 0.8085739093734042,
+        "tier_a_score": 0.8055969470026596,
+        "tier_b_score": 0.8103555762468043,
         "tier_c_score": null
       }
     }
@@ -413,46 +421,96 @@
   "bandit": {
     "with_age": {
       "frontier_local": {
-        "pulls": 24,
-        "total_reward": 25.67596457285907,
-        "mean_reward": 1.0698318572024612
+        "pulls": 472,
+        "total_reward": 68.17596457285863,
+        "mean_reward": 0.1444406029085988,
+        "recent_reward_count": 1,
+        "recent_mean_reward": 0.0,
+        "selection_weight": 1.3,
+        "selection_rank": 2
       },
       "size_winner_local": {
-        "pulls": 125,
-        "total_reward": 137.6789274365423,
-        "mean_reward": 1.1014314194923385
+        "pulls": 2033,
+        "total_reward": 313.62892743655266,
+        "mean_reward": 0.154269024808929,
+        "recent_reward_count": 24,
+        "recent_mean_reward": 0.0,
+        "selection_weight": 1.45,
+        "selection_rank": 1
       },
       "root_seed_local": {
-        "pulls": 9,
-        "total_reward": 2.9499999999999997,
-        "mean_reward": 0.3277777777777777
+        "pulls": 355,
+        "total_reward": 51.44999999999992,
+        "mean_reward": 0.1449295774647885,
+        "recent_reward_count": 3,
+        "recent_mean_reward": 0.0,
+        "selection_weight": 0.65,
+        "selection_rank": 3
       },
       "random_restart": {
-        "pulls": 12,
-        "total_reward": 1.7999999999999998,
-        "mean_reward": 0.15
+        "pulls": 1742,
+        "total_reward": 295.80000000000064,
+        "mean_reward": 0.16980482204362837,
+        "recent_reward_count": 1,
+        "recent_mean_reward": 0.0,
+        "selection_weight": 0.4,
+        "selection_rank": 5
+      },
+      "elite_crossover": {
+        "pulls": 182,
+        "total_reward": 8.15,
+        "mean_reward": 0.04478021978021978,
+        "recent_reward_count": 3,
+        "recent_mean_reward": 0.0,
+        "selection_weight": 0.65,
+        "selection_rank": 4
       }
     },
     "without_age": {
       "frontier_local": {
-        "pulls": 7,
-        "total_reward": 4.000000000000001,
-        "mean_reward": 0.5714285714285715
+        "pulls": 257,
+        "total_reward": 31.200000000000095,
+        "mean_reward": 0.1214007782101171,
+        "recent_reward_count": 3,
+        "recent_mean_reward": 0.0,
+        "selection_weight": 1.3,
+        "selection_rank": 2
       },
       "size_winner_local": {
-        "pulls": 140,
-        "total_reward": 117.93313877348503,
-        "mean_reward": 0.8423795626677502
+        "pulls": 2174,
+        "total_reward": 307.6742193238495,
+        "mean_reward": 0.14152447990977438,
+        "recent_reward_count": 24,
+        "recent_mean_reward": 0.0,
+        "selection_weight": 1.45,
+        "selection_rank": 1
       },
       "root_seed_local": {
-        "pulls": 15,
-        "total_reward": 3.85,
-        "mean_reward": 0.25666666666666665
+        "pulls": 458,
+        "total_reward": 63.54999999999989,
+        "mean_reward": 0.1387554585152836,
+        "recent_reward_count": 5,
+        "recent_mean_reward": 0.0,
+        "selection_weight": 0.65,
+        "selection_rank": 3
       },
       "random_restart": {
-        "pulls": 8,
-        "total_reward": 1.2000000000000002,
-        "mean_reward": 0.15000000000000002
+        "pulls": 1704,
+        "total_reward": 256.20000000000675,
+        "mean_reward": 0.1503521126760603,
+        "recent_reward_count": 3,
+        "recent_mean_reward": 0.0,
+        "selection_weight": 0.4,
+        "selection_rank": 5
+      },
+      "elite_crossover": {
+        "pulls": 191,
+        "total_reward": 4.302356922967826,
+        "mean_reward": 0.022525428916061917,
+        "recent_reward_count": 1,
+        "recent_mean_reward": 0.0,
+        "selection_weight": 0.65,
+        "selection_rank": 4
       }
     }
   },
