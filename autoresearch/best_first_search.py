@@ -15,6 +15,7 @@ subset sizes rather than forcing a rigid size-by-size ladder.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import heapq
 import json
 import math
@@ -51,7 +52,7 @@ from train import (
     train_subset,
 )
 
-STATE_VERSION = 1
+STATE_VERSION = 2
 DEFAULT_STATE_PATH = AUTORESEARCH_DIR / "best_first_search_state.json"
 DEFAULT_STATUS_PATH = AUTORESEARCH_DIR / "best_first_search_status.json"
 DEFAULT_PRIOR_TIER = "A"
@@ -65,10 +66,74 @@ DEFAULT_ADD_CHILDREN = 6
 DEFAULT_SWAP_CHILDREN = 4
 DEFAULT_SHRINK_CHILDREN = 2
 DEFAULT_UNDEREXPLORED_SIZE_WEIGHT = 0.08
+DEFAULT_DIVERSITY_WEIGHT = 0.04
+DEFAULT_KEEP_DROUGHT_THRESHOLD = 400
+DEFAULT_ENQUEUE_STALL_THRESHOLD = 240
+DEFAULT_STALL_EXPLORATION_MULTIPLIER = 2.0
+MAX_STALL_EXPLORATION_MULTIPLIER = 3.0
+DEFAULT_RELATION_REDUNDANCY_WEIGHT = 0.16
+DEFAULT_RELATION_MAX_WEIGHT = 0.08
+DEFAULT_NEW_DOMAIN_BONUS = 0.10
+DEFAULT_SUBSET_REDUNDANCY_WEIGHT = 0.10
+DEFAULT_SELECTION_TEMPERATURE = 0.08
+DEFAULT_RANDOMIZED_POOL_MULTIPLIER = 3
+DEFAULT_GROUP_RELATION_SCORE = 25
+DEFAULT_SAME_GROUP_RELATION_SCORE = 88
 
 PRIOR_SINGLETON_STAGE = "singleton_priors"
 PRIOR_PAIR_STAGE = "pair_priors"
 SEARCH_STAGE = "search"
+
+MARKER_TO_GROUP: dict[str, str] = {}
+for _group_name, _markers in BIOLOGICAL_GROUPS.items():
+    for _marker in _markers:
+        MARKER_TO_GROUP.setdefault(_marker, _group_name)
+
+GROUP_RELATION_SCORES: dict[frozenset[str], int] = {
+    frozenset(("liver_proteins", "renal_metabolic")): 45,
+    frozenset(("liver_proteins", "lipids_energy")): 45,
+    frozenset(("liver_proteins", "electrolytes_minerals")): 25,
+    frozenset(("liver_proteins", "iron_hematinic")): 30,
+    frozenset(("liver_proteins", "cbc_red_cell")): 20,
+    frozenset(("liver_proteins", "immune_cells")): 20,
+    frozenset(("liver_proteins", "micronutrients")): 35,
+    frozenset(("liver_proteins", "inflammation_toxicology")): 35,
+    frozenset(("renal_metabolic", "lipids_energy")): 25,
+    frozenset(("renal_metabolic", "electrolytes_minerals")): 60,
+    frozenset(("renal_metabolic", "iron_hematinic")): 20,
+    frozenset(("renal_metabolic", "cbc_red_cell")): 25,
+    frozenset(("renal_metabolic", "immune_cells")): 25,
+    frozenset(("renal_metabolic", "micronutrients")): 20,
+    frozenset(("renal_metabolic", "inflammation_toxicology")): 35,
+    frozenset(("lipids_energy", "electrolytes_minerals")): 20,
+    frozenset(("lipids_energy", "iron_hematinic")): 20,
+    frozenset(("lipids_energy", "cbc_red_cell")): 20,
+    frozenset(("lipids_energy", "immune_cells")): 20,
+    frozenset(("lipids_energy", "micronutrients")): 40,
+    frozenset(("lipids_energy", "inflammation_toxicology")): 20,
+    frozenset(("electrolytes_minerals", "iron_hematinic")): 15,
+    frozenset(("electrolytes_minerals", "cbc_red_cell")): 15,
+    frozenset(("electrolytes_minerals", "immune_cells")): 15,
+    frozenset(("electrolytes_minerals", "micronutrients")): 20,
+    frozenset(("electrolytes_minerals", "inflammation_toxicology")): 20,
+    frozenset(("iron_hematinic", "cbc_red_cell")): 65,
+    frozenset(("iron_hematinic", "immune_cells")): 20,
+    frozenset(("iron_hematinic", "micronutrients")): 25,
+    frozenset(("iron_hematinic", "inflammation_toxicology")): 20,
+    frozenset(("cbc_red_cell", "immune_cells")): 45,
+    frozenset(("cbc_red_cell", "micronutrients")): 30,
+    frozenset(("cbc_red_cell", "inflammation_toxicology")): 25,
+    frozenset(("immune_cells", "micronutrients")): 20,
+    frozenset(("immune_cells", "inflammation_toxicology")): 70,
+    frozenset(("micronutrients", "inflammation_toxicology")): 20,
+}
+
+BIOMARKER_RELATION_OVERRIDES: dict[frozenset[str], int] = {
+    frozenset(("GRP", "GRPPCNT")): 96,
+    frozenset(("LMP", "LMPPCNT")): 96,
+    frozenset(("MOP", "MOPPCNT")): 96,
+    frozenset(("HGP", "HTP")): 92,
+}
 
 
 @dataclass
@@ -137,6 +202,8 @@ class BestFirstState:
     size_visit_counts: dict[str, dict[str, int]] = field(
         default_factory=lambda: {lane: {} for lane in LANE_ORDER}
     )
+    search_evals_since_last_keep: int = 0
+    pops_since_last_new_enqueue: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -156,6 +223,8 @@ class BestFirstState:
             "pair_prior": self.pair_prior,
             "best_by_size": self.best_by_size,
             "size_visit_counts": self.size_visit_counts,
+            "search_evals_since_last_keep": self.search_evals_since_last_keep,
+            "pops_since_last_new_enqueue": self.pops_since_last_new_enqueue,
         }
 
     @classmethod
@@ -196,6 +265,8 @@ class BestFirstState:
             lane: {str(key): int(value) for key, value in payload.get("size_visit_counts", {}).get(lane, {}).items()}
             for lane in LANE_ORDER
         }
+        state.search_evals_since_last_keep = int(payload.get("search_evals_since_last_keep", 0))
+        state.pops_since_last_new_enqueue = int(payload.get("pops_since_last_new_enqueue", 0))
         return state
 
 
@@ -347,6 +418,78 @@ def normalize_score(value: float, floor: float, ceiling: float) -> float:
     return (clipped - floor) / (ceiling - floor)
 
 
+def marker_group(marker: str) -> str | None:
+    return MARKER_TO_GROUP.get(marker)
+
+
+def stable_uniform_01(seed: str) -> float:
+    digest = hashlib.sha256(seed.encode("utf-8")).digest()
+    value = int.from_bytes(digest[:8], "big")
+    return (value + 1) / (2**64 + 1)
+
+
+def medical_relation_score(left: str, right: str) -> int:
+    if left == right:
+        return 100
+    pair_override = BIOMARKER_RELATION_OVERRIDES.get(frozenset((left, right)))
+    if pair_override is not None:
+        return pair_override
+    left_group = marker_group(left)
+    right_group = marker_group(right)
+    if left_group is None or right_group is None:
+        return DEFAULT_GROUP_RELATION_SCORE
+    if left_group == right_group:
+        return DEFAULT_SAME_GROUP_RELATION_SCORE
+    return GROUP_RELATION_SCORES.get(
+        frozenset((left_group, right_group)),
+        DEFAULT_GROUP_RELATION_SCORE,
+    )
+
+
+def subset_relation_redundancy(biomarkers: tuple[str, ...]) -> float:
+    pair_scores = [medical_relation_score(left, right) for left, right in combinations(biomarkers, 2)]
+    if not pair_scores:
+        return 0.0
+    return sum(pair_scores) / (100.0 * len(pair_scores))
+
+
+def marker_relation_summary(
+    biomarkers: tuple[str, ...],
+    marker: str,
+) -> tuple[float, float, float]:
+    if not biomarkers:
+        return 0.0, 0.0, 1.0 if marker_group(marker) is not None else 0.0
+    relation_scores = [medical_relation_score(marker, existing) for existing in biomarkers]
+    avg_relation = sum(relation_scores) / (100.0 * len(relation_scores))
+    max_relation = max(relation_scores) / 100.0
+    novelty_bonus = marker_group_novelty(biomarkers, marker)
+    return avg_relation, max_relation, novelty_bonus
+
+
+def subset_group_diversity(biomarkers: tuple[str, ...]) -> float:
+    assigned_groups = {group for marker in biomarkers if (group := marker_group(marker)) is not None}
+    if not biomarkers:
+        return 0.0
+    return len(assigned_groups) / len(biomarkers)
+
+
+def marker_group_novelty(biomarkers: tuple[str, ...], marker: str) -> float:
+    marker_group_name = marker_group(marker)
+    if marker_group_name is None:
+        return 0.0
+    existing_groups = {group for existing in biomarkers if (group := marker_group(existing)) is not None}
+    return 1.0 if marker_group_name not in existing_groups else 0.0
+
+
+def effective_underexplored_size_weight(state: BestFirstState, args: argparse.Namespace) -> float:
+    multiplier = 1.0
+    if state.search_evals_since_last_keep >= DEFAULT_KEEP_DROUGHT_THRESHOLD:
+        multiplier *= DEFAULT_STALL_EXPLORATION_MULTIPLIER
+    if state.pops_since_last_new_enqueue >= DEFAULT_ENQUEUE_STALL_THRESHOLD:
+        multiplier *= DEFAULT_STALL_EXPLORATION_MULTIPLIER
+    return args.underexplored_size_weight * min(multiplier, MAX_STALL_EXPLORATION_MULTIPLIER)
+
+
 def update_prior_maps(state: BestFirstState) -> None:
     for lane in LANE_ORDER:
         state.singleton_prior[lane] = rank_normalize(state.singleton_raw[lane])
@@ -391,6 +534,8 @@ def candidate_priority_score(
     size_key = str(feature_count)
     size_visits = state.size_visit_counts[lane].get(size_key, 0)
     size_bonus = underexplored_size_weight / math.sqrt(1.0 + size_visits)
+    diversity_component = subset_group_diversity(biomarkers)
+    redundancy_component = subset_relation_redundancy(biomarkers)
 
     return (
         0.45 * singleton_component
@@ -398,6 +543,8 @@ def candidate_priority_score(
         + 0.10 * strongest_pair_component
         + 0.10 * observed_component
         + size_bonus
+        + DEFAULT_DIVERSITY_WEIGHT * diversity_component
+        - DEFAULT_SUBSET_REDUNDANCY_WEIGHT * redundancy_component
     )
 
 
@@ -416,7 +563,39 @@ def score_marker_addition(
     ]
     pair_part = sum(pair_values) / len(pair_values) if pair_values else singleton_part
     strongest_pair = max(pair_values) if pair_values else singleton_part
-    return 0.50 * singleton_part + 0.35 * pair_part + 0.15 * strongest_pair
+    avg_relation, max_relation, novelty_part = marker_relation_summary(biomarkers, marker)
+    return (
+        0.48 * singleton_part
+        + 0.32 * pair_part
+        + 0.15 * strongest_pair
+        + DEFAULT_NEW_DOMAIN_BONUS * novelty_part
+        - DEFAULT_RELATION_REDUNDANCY_WEIGHT * avg_relation
+        - DEFAULT_RELATION_MAX_WEIGHT * max_relation
+    )
+
+
+def randomized_top_candidates(
+    candidates: list[tuple[float, str, str | None]],
+    limit: int,
+    *,
+    seed: str,
+) -> list[str]:
+    if limit <= 0:
+        return []
+    pool_size = min(len(candidates), max(limit, limit * DEFAULT_RANDOMIZED_POOL_MULTIPLIER))
+    pool = candidates[:pool_size]
+    if len(pool) <= limit:
+        return [marker for _, marker, _ in pool]
+    best_score = pool[0][0]
+    weighted_pool: list[tuple[float, float, str]] = []
+    for score, marker, _ in pool:
+        scaled = (score - best_score) / DEFAULT_SELECTION_TEMPERATURE
+        weight = math.exp(max(-20.0, min(0.0, scaled)))
+        jitter = stable_uniform_01(f"{seed}|{marker}")
+        sample_key = -math.log(jitter) / max(weight, 1e-9)
+        weighted_pool.append((sample_key, -score, marker))
+    weighted_pool.sort()
+    return [marker for _, _, marker in weighted_pool[:limit]]
 
 
 def choose_additions(
@@ -424,14 +603,59 @@ def choose_additions(
     lane: str,
     biomarkers: tuple[str, ...],
     limit: int,
+    *,
+    random_seed: str,
 ) -> list[str]:
     candidates = [
-        (score_marker_addition(state, lane, biomarkers, marker), marker)
+        (score_marker_addition(state, lane, biomarkers, marker), marker, marker_group(marker))
         for marker in CANDIDATE_BIOMARKER_COLUMNS
         if marker not in biomarkers
     ]
     candidates.sort(key=lambda item: (-item[0], item[1]))
-    return [marker for _, marker in candidates[:limit]]
+    if limit <= 0:
+        return []
+
+    chosen: list[str] = []
+    chosen_set: set[str] = set()
+    buckets: dict[str, list[tuple[float, str, str | None]]] = {}
+    existing_groups = {group for marker in biomarkers if (group := marker_group(marker)) is not None}
+    for score, marker, group_name in candidates:
+        bucket_key = group_name or f"ungrouped::{marker}"
+        buckets.setdefault(bucket_key, []).append((score, marker, group_name))
+
+    novel_group_candidates = [
+        bucket[0]
+        for bucket in buckets.values()
+        if bucket and bucket[0][2] is not None and bucket[0][2] not in existing_groups
+    ]
+    novel_group_candidates.sort(key=lambda item: (-item[0], item[1]))
+    for _, marker, _ in novel_group_candidates:
+        if marker in chosen_set:
+            continue
+        chosen.append(marker)
+        chosen_set.add(marker)
+        if len(chosen) >= limit:
+            return chosen
+
+    randomized_markers = randomized_top_candidates(candidates, limit, seed=random_seed)
+    for marker in randomized_markers:
+        if marker in chosen_set:
+            continue
+        chosen.append(marker)
+        chosen_set.add(marker)
+        if len(chosen) >= limit:
+            break
+    if len(chosen) >= limit:
+        return chosen
+
+    for _, marker, _ in candidates:
+        if marker in chosen_set:
+            continue
+        chosen.append(marker)
+        chosen_set.add(marker)
+        if len(chosen) >= limit:
+            break
+    return chosen
 
 
 def biomarker_contribution(
@@ -459,9 +683,16 @@ def build_neighbors(
     children: list[FrontierEntry] = []
     include_age = LANE_CONFIGS[entry.lane].include_age
     current = entry.biomarkers
+    size_weight = effective_underexplored_size_weight(state, args)
 
     if len(current) < max_biomarker_count(include_age):
-        for marker in choose_additions(state, entry.lane, current, args.add_children):
+        for marker in choose_additions(
+            state,
+            entry.lane,
+            current,
+            args.add_children,
+            random_seed=f"{entry.lane}|{';'.join(current)}|{state.frontier_pop_count}|add",
+        ):
             proposed = tuple(sorted((*current, marker)))
             if not biomarkers_within_feature_cap(include_age, proposed):
                 continue
@@ -470,7 +701,7 @@ def build_neighbors(
                 entry.lane,
                 proposed,
                 parent_score=observed_score,
-                underexplored_size_weight=args.underexplored_size_weight,
+                underexplored_size_weight=size_weight,
             )
             children.append(
                 FrontierEntry(
@@ -492,7 +723,13 @@ def build_neighbors(
                 marker,
             ),
         )
-        additions = choose_additions(state, entry.lane, current, args.swap_children * 2)
+        additions = choose_additions(
+            state,
+            entry.lane,
+            current,
+            args.swap_children * 2,
+            random_seed=f"{entry.lane}|{';'.join(current)}|{state.frontier_pop_count}|swap",
+        )
         for victim in victims[: max(1, min(len(victims), args.swap_children))]:
             for marker in additions:
                 if marker in current:
@@ -505,7 +742,7 @@ def build_neighbors(
                     entry.lane,
                     proposed,
                     parent_score=observed_score,
-                    underexplored_size_weight=args.underexplored_size_weight,
+                    underexplored_size_weight=size_weight,
                 )
                 children.append(
                     FrontierEntry(
@@ -538,7 +775,7 @@ def build_neighbors(
                 entry.lane,
                 proposed,
                 parent_score=observed_score,
-                underexplored_size_weight=args.underexplored_size_weight,
+                underexplored_size_weight=size_weight,
             )
             children.append(
                 FrontierEntry(
@@ -722,6 +959,9 @@ def write_status_snapshot(path: Path, state: BestFirstState, args: argparse.Name
         "frontier_size": len(state.frontier_entries),
         "prior_tier": args.prior_tier,
         "search_tier": args.search_tier,
+        "search_evals_since_last_keep": state.search_evals_since_last_keep,
+        "pops_since_last_new_enqueue": state.pops_since_last_new_enqueue,
+        "effective_underexplored_size_weight": effective_underexplored_size_weight(state, args),
         "best_by_size": state.best_by_size,
     }
     path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
@@ -763,14 +1003,15 @@ def enqueue_frontier(
     heap: list[tuple[float, int, FrontierEntry]],
     counter: list[int],
     entry: FrontierEntry,
-) -> None:
+) -> bool:
     signature = candidate_signature(entry.lane, entry.biomarkers)
     seen = set(state.frontier_seen_signatures)
     if signature in seen:
-        return
+        return False
     state.frontier_seen_signatures.append(signature)
     heapq.heappush(heap, (-entry.priority, counter[0], entry))
     counter[0] += 1
+    return True
 
 
 def seed_frontier(
@@ -781,6 +1022,7 @@ def seed_frontier(
 ) -> None:
     if heap:
         return
+    size_weight = effective_underexplored_size_weight(state, args)
 
     for lane in LANE_ORDER:
         top_singletons = sorted(
@@ -800,7 +1042,7 @@ def seed_frontier(
                         state,
                         lane,
                         biomarkers,
-                        underexplored_size_weight=args.underexplored_size_weight,
+                        underexplored_size_weight=size_weight,
                     ),
                     source="seed_singleton",
                     depth=0,
@@ -824,7 +1066,7 @@ def seed_frontier(
                         state,
                         lane,
                         biomarkers,
-                        underexplored_size_weight=args.underexplored_size_weight,
+                        underexplored_size_weight=size_weight,
                     ),
                     source="seed_pair",
                     depth=0,
@@ -844,7 +1086,7 @@ def seed_frontier(
                         state,
                         lane,
                         reference_subset,
-                        underexplored_size_weight=args.underexplored_size_weight,
+                        underexplored_size_weight=size_weight,
                     ),
                     source="seed_reference",
                     depth=0,
@@ -873,7 +1115,7 @@ def seed_frontier(
                         state,
                         lane,
                         candidate_markers,
-                        underexplored_size_weight=args.underexplored_size_weight,
+                        underexplored_size_weight=size_weight,
                     ),
                     source=f"seed_group_{group_name}",
                     depth=0,
@@ -981,7 +1223,7 @@ def run_search_stage(
         size_key = str(lane_feature_count(entry.lane, entry.biomarkers))
         state.size_visit_counts[entry.lane][size_key] = state.size_visit_counts[entry.lane].get(size_key, 0) + 1
 
-        result, _, candidate_id = evaluate_subset(
+        result, from_cache, candidate_id = evaluate_subset(
             dataset,
             state,
             result_cache,
@@ -999,7 +1241,7 @@ def run_search_stage(
             continue
 
         progress_made = True
-        record_best_by_size(
+        retained = record_best_by_size(
             state,
             entry.lane,
             entry.biomarkers,
@@ -1008,8 +1250,17 @@ def run_search_stage(
             candidate_id=candidate_id,
             source=entry.source,
         )
+        if retained:
+            state.search_evals_since_last_keep = 0
+        elif not from_cache:
+            state.search_evals_since_last_keep += 1
+        any_enqueued = False
         for child in build_neighbors(state, entry, args, float(result.val_cindex)):
-            enqueue_frontier(state, heap, counter, child)
+            any_enqueued = enqueue_frontier(state, heap, counter, child) or any_enqueued
+        if any_enqueued:
+            state.pops_since_last_new_enqueue = 0
+        else:
+            state.pops_since_last_new_enqueue += 1
 
         if state.evaluation_count >= next_status_target:
             break
