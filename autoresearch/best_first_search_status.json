@@ -1,15 +1,15 @@
 {
-  "timestamp": "2026-03-24T19:20:07.249487+00:00",
+  "timestamp": "2026-03-25T07:14:03.696646+00:00",
   "stage": "search",
-  "evaluation_count": 1742,
-  "cache_hit_count": 5298,
-  "frontier_pop_count": 3734,
-  "frontier_size": 9129,
+  "evaluation_count": 14990,
+  "cache_hit_count": 7447,
+  "frontier_pop_count": 19131,
+  "frontier_size": 49675,
   "prior_tier": "A",
   "search_tier": "B",
-  "search_evals_since_last_keep": 208,
-  "pops_since_last_new_enqueue": 1,
-  "effective_underexplored_size_weight": 0.08,
+  "search_evals_since_last_keep": 4497,
+  "pops_since_last_new_enqueue": 0,
+  "effective_underexplored_size_weight": 0.16,
   "best_by_size": {
     "with_age": {
       "2": {
@@ -46,46 +46,46 @@
         "timestamp": "2026-03-24T17:32:39.609722+00:00"
       },
       "5": {
-        "candidate_id": "cached::with_age::GRP;HDP;UAP;VCP",
+        "candidate_id": "cached::with_age::HDP;MHP;VCP;WCP",
         "biomarkers": [
-          "GRP",
           "HDP",
-          "UAP",
-          "VCP"
+          "MHP",
+          "VCP",
+          "WCP"
         ],
         "tier": "B",
-        "val_cindex": 0.869867,
+        "val_cindex": 0.870205,
         "source": "add",
-        "timestamp": "2026-03-24T17:33:15.137393+00:00"
+        "timestamp": "2026-03-24T19:52:45.635306+00:00"
       },
       "6": {
-        "candidate_id": "cached::with_age::ACP;RWP;UAP;VCP;WCP",
+        "candidate_id": "cached::with_age::ACP;HDP;MHP;UAP;WCP",
         "biomarkers": [
           "ACP",
-          "RWP",
+          "HDP",
+          "MHP",
           "UAP",
-          "VCP",
           "WCP"
         ],
         "tier": "B",
-        "val_cindex": 0.870018,
-        "source": "swap",
-        "timestamp": "2026-03-24T17:36:25.173950+00:00"
+        "val_cindex": 0.872251,
+        "source": "add",
+        "timestamp": "2026-03-24T22:25:48.281497+00:00"
       },
       "7": {
-        "candidate_id": "cached::with_age::ACP;GRP;HDP;UAP;VCP;WCP",
+        "candidate_id": "cached::with_age::ACP;HDP;MHP;UAP;VCP;WCP",
         "biomarkers": [
           "ACP",
-          "GRP",
           "HDP",
+          "MHP",
           "UAP",
           "VCP",
           "WCP"
         ],
         "tier": "B",
-        "val_cindex": 0.870906,
-        "source": "swap",
-        "timestamp": "2026-03-24T17:31:53.660384+00:00"
+        "val_cindex": 0.872325,
+        "source": "add",
+        "timestamp": "2026-03-24T21:27:51.812046+00:00"
       },
       "8": {
         "candidate_id": "cached::with_age::ACP;GRP;HDP;MHP;UAP;VCP;WCP",
@@ -121,22 +121,22 @@
         "timestamp": "2026-03-24T17:54:55.105470+00:00"
       },
       "10": {
-        "candidate_id": "cached::with_age::ACP;BUP;GRP;HDP;MHP;PBP;UAP;VCP;WCP",
+        "candidate_id": "cand_39863",
         "biomarkers": [
           "ACP",
-          "BUP",
+          "ASPSI",
+          "BCP",
           "GRP",
           "HDP",
           "MHP",
-          "PBP",
           "UAP",
           "VCP",
           "WCP"
         ],
         "tier": "B",
-        "val_cindex": 0.871941,
+        "val_cindex": 0.8731110062229468,
         "source": "add",
-        "timestamp": "2026-03-24T18:28:22.218558+00:00"
+        "timestamp": "2026-03-24T21:35:17.691781+00:00"
       }
     },
     "without_age": {
@@ -232,58 +232,58 @@
         "timestamp": "2026-03-24T19:08:30.060315+00:00"
       },
       "8": {
-        "candidate_id": "cached::without_age::AMP;BUP;GHP;LYP;MVPSI;PBP;SGP;TCP",
+        "candidate_id": "cand_38699",
         "biomarkers": [
           "AMP",
           "BUP",
+          "FOP",
           "GHP",
           "LYP",
           "MVPSI",
           "PBP",
-          "SGP",
           "TCP"
         ],
         "tier": "B",
-        "val_cindex": 0.799422,
+        "val_cindex": 0.8026795883157449,
         "source": "add",
-        "timestamp": "2026-03-24T18:45:29.262427+00:00"
+        "timestamp": "2026-03-24T20:30:25.566978+00:00"
       },
       "9": {
-        "candidate_id": "cached::without_age::AMP;BUP;FOP;GHP;LYP;PBP;RWP;SGP;TCP",
+        "candidate_id": "cand_43924",
         "biomarkers": [
           "AMP",
           "BUP",
           "FOP",
           "GHP",
           "LYP",
+          "MVPSI",
           "PBP",
           "RWP",
-          "SGP",
           "TCP"
         ],
         "tier": "B",
-        "val_cindex": 0.799939,
+        "val_cindex": 0.8085594111800402,
         "source": "add",
-        "timestamp": "2026-03-24T17:31:58.864941+00:00"
+        "timestamp": "2026-03-25T00:52:13.296623+00:00"
       },
       "10": {
-        "candidate_id": "cached::without_age::AMP;BUP;CEP;FOP;GHP;LYP;PBP;RWP;SGP;TCP",
+        "candidate_id": "cand_46167",
         "biomarkers": [
           "AMP",
           "BUP",
-          "CEP",
           "FOP",
           "GHP",
           "LYP",
+          "MVPSI",
           "PBP",
           "RWP",
           "SGP",
           "TCP"
         ],
         "tier": "B",
-        "val_cindex": 0.802306,
+        "val_cindex": 0.8086898949203163,
         "source": "add",
-        "timestamp": "2026-03-24T17:32:59.438464+00:00"
+        "timestamp": "2026-03-25T02:51:18.241331+00:00"
       }
     }
   }
